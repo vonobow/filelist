@@ -1,0 +1,102 @@
+<style>
+h1, h2, h3, h4, h5, h6 {
+	margin-top: 0.7em;
+	margin-bottom: 0.5em;
+	break-after: avoid;
+}
+h1 {
+	font-size: 150%;
+	background-color: black;
+	color: white;
+	text-align: center;
+}
+h2 {
+	font-size: 120%;
+	border: 1px solid black;
+	padding-left: 0.3ex;
+}
+h3 {
+	font-size: 100%;
+	border-bottom: 1px solid black;
+	padding-left: 0.3ex;
+}
+h4 {
+	font-size: 100%;
+	margin-left: 0.3ex;
+}
+code, kbd {
+	font-family: "courier new", nomospace;
+	margin: 0px 0.3ex;
+	border: 1px solid silver;
+	border-radius: 4px;
+	padding: 1px 2px;
+}
+kbd {
+	border-color: gray;
+	border-bottom-width: 2px;
+	border-right-width: 2px;
+	padding: 1px 3px;
+}
+p, ul, ol, pre, blockquote, li {
+	margin-top: 0.3em;
+}
+p, li {
+	margin-bottom: 0.3em;
+}
+ul, ol, pre, blockquote {
+	margin-bottom: 0.5em;
+}
+ul, ol {
+	padding-left: 1.5em;
+	margin-left: 0em;
+}
+pre, blockquote {
+	border: 2px solid #ccf;
+	background-color: #eef;
+	color: navy;
+	overflow: auto;
+	padding: 2px;
+}
+pre code {
+	border: none;
+	margin: 0px;
+	padding: 0px;
+}
+blockquote {
+	border-top-style: none;
+	border-bottom-style: none;
+	border-right-style: none;
+}
+table {
+	border: solid 1px silver;
+	border-bottom: none;
+	border-right: none;
+	border-spacing: 0px;
+	margin-top: 0.5em;
+	margin-bottom: 0.5em;
+}
+td, th {
+	border: solid 1px silver;
+	border-left: none;
+	border-top: none;
+	padding: 2px;
+}
+em {
+	font-family: "times new roman", serif;
+	font-style: italic;
+}
+hr {
+	height: 1px;
+	background-color: gray;
+	border: none;
+}
+dl, dt {
+	margin-top: 0.3em;
+}
+dl, dd {
+	margin-bottom: 0.5em;
+}
+dd {
+	margin-left: 1em;
+}
+</style>
