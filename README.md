@@ -1,18 +1,30 @@
-# tiny-filelist
+# tiny-filelist with markdown support
 
 CAUTION: This is mainly intended to use in closed environment, such as containers or ssh port forwarding. **DO NOT USE ON SHARED SERVERS,** it leaks your files to other users.
+
+CAUTION: Markdown rendering tries to include some files without any checks. **DO NOT USE WITH UNTRUSTED FILES.**
 
 * Simple file upload/download utility written in PHP.
 * It can list, upload, and download files.
 * It CANNOT remove any files for safety.
 * Creating directories can be done by uploading files with containing directories.
-
- If you are interested in showing markdown, visit `with-md` branch.
+* It can parse and show markdown files, from the triple dot menu.
+	* Can include some HTML fragments.
+	* Supports definition lists and raw HTML tags.
+	* Supports Mermaid notation (client side rendering).
 
 ## Requirements
 
 * PHP (>= 8.0)
 * php-intl
+* Node.js (and npm, I'm not sure which version is required, sorry)
+
+## Preparation
+
+```
+npm install
+```
+
 
 ### Limitation
 
@@ -89,6 +101,25 @@ php -S localhost:12345 path/to/router.php
 ```
 magick filemame.jpg -auto-orient -resize "x100>" th/filename.jpg
 ```
+
+### Setting the document style
+
+* Following files are read, in this order.
+	* `default.fhtml` in the directory where `index.php` is located.
+	* `md-default.fhtml` in the same place as above.
+	* `default.fhtml` in the directory where the markdown to be shown is located.
+	* `md-default.fhtml` in the same place as above.
+* `.fhtml` (fragmented HTML) files are just inserted into `<head>` element of the generated HTML, so you can include any codes which are allowed to be written in the `<head>` element.
+	* CSS
+	* JavaScript codes
+	* `<meta>` elements
+
+## OSSs Used
+
+* [remark](https://www.npmjs.com/package/remark) and its folks.
+* [rephye](https://www.npmjs.com/package/rehype) and its folks.
+* [to-vfile](https://www.npmjs.com/package/to-vfile)
+* [remark-definition-list](https://www.npmjs.com/package/remark-definition-list)
 
 ## LICENSE
 

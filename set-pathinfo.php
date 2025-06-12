@@ -17,6 +17,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const VERSION = "0.1";
+const VARIANT = "md";
 const PASSHASHFILE = ".tiny-filelist-passhash";
 const ENV_TEMPDIR = "FILELIST_TEMPDIR";
 

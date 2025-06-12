@@ -832,9 +832,10 @@ $AEL("DOMContentLoaded", _ => {
 		if (popupMenu == null)
 			return;
 		popupMenu.classList.remove(CLS_UP);
-		selectedElement = ev.target.closest(".file-context-menu-popper");
-		if (selectedElement == null)
+		const sel = ev.target.closest(".file-context-menu-popper");
+		if (sel == null)
 			return;
+		selectedElement = sel;
 		popupMenu.classList.add(CLS_UP);
 		popupMenu.style.left = `${ev.pageX}px`;
 		popupMenu.style.top = `${ev.pageY}px`;
@@ -850,6 +851,55 @@ $AEL("DOMContentLoaded", _ => {
 		return `${pathinfo.scriptpath}${apiname}${pathinfo.path}` +
 			`${selectedElement.closest("li").dataset.filename}${optstr}`;
 	}
+	AEL($ID("show-as-markdown"), "click", () => {
+		location.href = generateContextURL("show-md.php", { force: true });
+	});
+	AEL($ID("show-as-markdown-php"), "click", _ => {
+		const dlg = $ID("php-md");
+		const form = QS(dlg, "form");
+		dlg.showModal();
+		QS(form, "[type=submit]").focus();
+		const remover = [];
+		function closeDialog() {
+			dlg.close();
+			remover.forEach(r => r());
+		}
+		function updateParameterOrder(table) {
+			let i = 1;
+			table.querySelectorAll(".order").forEach(td => td.innerText = i++);
+		}
+		remover.push(AEL(form, "submit", ev => {
+			ev.preventDefault();
+			const formdata = new FormData(form);
+			formdata.set("force", true);
+			formdata.set("usephp", true);
+			closeDialog();
+			location.href = generateContextURL("show-md.php", formdata);
+		}));
+		remover.push(AEL(dlg, "click", ev => {
+			const e = ev.target;
+			const table = e.closest("table");
+			if (e.closest(".del")) {
+				const tr = e.closest("tr");
+				tr.remove();
+				updateParameterOrder(table);
+				return;
+			}
+			if (e.closest(".add button")) {
+				const template = QS(table, ".template");
+				const newnode = template.cloneNode(true);
+				newnode.classList.remove("template");
+				const input = QS(newnode, "input");
+				input.disabled = false;
+				template.insertAdjacentElement("beforebegin", newnode);
+				input.focus();
+				updateParameterOrder(table);
+				return;
+			}
+			if (!form.contains(e))
+				closeDialog();
+		}));
+	});
 	AEL($ID("show-as-text"), "click", _ => {
 		location.href = generateContextURL("download.php", { "content-type": "text" });
 	});
@@ -1031,6 +1081,9 @@ p { margin: 0em; }
 }
 .reversed {
 	transform: rotate(180deg);
+}
+.reversed, .file-context-menu p:hover,
+#php-md button:hover {
 	color: #eef;
 	border-color: #ccf;
 	background-color: #66f;
@@ -1110,7 +1163,7 @@ div.dimmer {
 	display: none;
 	background-color: #0004;
 }
-.xfering .dimmer {
+:is(.xfering, .modal) .dimmer {
 	display: block;
 }
 .dimmer-container {
@@ -1130,8 +1183,10 @@ div.dimmer {
 }
 .file-context-menu-popper:hover,
 .file-context-menu p:hover {
-	background-color: #cff;
 	cursor: pointer;
+}
+.file-context-menu-popper:hover {
+	background-color: #cff;
 }
 .file-context-menu {
 	display: none;
@@ -1147,7 +1202,79 @@ div.dimmer {
 	display: block;
 }
 .file-context-menu p {
-	margin: 0.5em;
+	border: 1px solid transparent;
+	border-radius: 0.3em;
+	padding: 0.1em;
+	margin: 0.4em;
+}
+#php-md {
+	background-color: white;
+	border: 2px solid #88f;
+	border-radius: 8px;
+	padding: 0px;
+}
+#php-md .title {
+	white-space: nowrap;
+	font-family: san-serif;
+	border-bottom: solid 1px #88f;
+	padding: 4px;
+}
+#php-md .dialog-body {
+	padding: 4px;
+}
+#php-md table {
+	margin: 0.3em;
+	width: calc(100% - 0.6em);
+}
+#php-md td {
+	padding: 2px;
+	vertical-align: middle;
+}
+#php-md .order {
+	text-align: right;
+}
+#php-md .paramlist input {
+	box-sizing: border-box;
+	width: 100%;
+}
+#php-md button {
+	font-size: 100%;
+	appearance: none;
+	box-sizing: content-box;
+	display: inline-block;
+	line-height: 1;
+	padding: 0px;
+	min-width: 1em;
+	min-height: 1em;
+	border: solid 1px #88f;
+	background-color: #eef;
+	color: #66f;
+	border-radius: 0.6em;
+	text-align: center;
+	font-weight: bold;
+	cursor: pointer;
+}
+#php-md button:focus {
+	outline-color: #008;
+}
+#php-md .add td {
+	text-align: center;
+}
+#php-md .add button {
+	width: 90%;
+}
+#php-md .template {
+	display: none;
+}
+#php-md .submit {
+	text-align: center;
+}
+#php-md button[type=submit] {
+	font-weight: normal;
+	border-width: 2px;
+	border-radius: 0px;
+	width: calc(100% - 1em);
+	padding: 2px;
 }
 #abort-button {
 	font-weight: bold;
@@ -1215,7 +1342,7 @@ div.dimmer {
 <?php putDotsLink($url) ?>
 <span id="show-thumbnail" class="button"></span>
 <span class="timezone">TZ=<?= $dt->format("T (O)")?></span>
-<span class="version">ver <?=VERSION?></span>
+<span class="version">ver <?=VERSION."-".VARIANT?></span>
 </header>
 <div class="content-body">
 <?php list_dir($path) ?>
@@ -1225,8 +1352,21 @@ div.dimmer {
 </div><!-- .body -->
 <div class="file-context-menu">
 <p id="show-as-text">show as plaintext
+<p id="show-as-markdown">show as Markdown
+<p id="show-as-markdown-php">show as Markdown with PHP preprocessing
 <p id="show-as-roff-man">show roff as manpage
 <p id="download">download
 </div>
+<dialog id="php-md"><form>
+<p class="title">show as Markdown with PHP preprocessing
+<div class="dialog-body">
+<p class="section">parameters
+<table class="paramlist">
+<tr class="template"><td class="order"><td><input disabled type="text" name="p[]"><td><button type="button" class="del" tabindex=-1>-</button>
+<tr class="add"><td colspan=3><button type="button">+</button>
+</table>
+<p class="submit"><button type="submit">submit</button>
+</div>
+</form></dialog>
 </body>
 </html>

@@ -1,0 +1,50 @@
+<style>
+.md-content {
+	line-height: 1.4;
+	font-size: 10pt;
+}
+.md-content p {
+	margin-left: 1em;
+}
+.md-content ul {
+	margin-left: 1em;
+}
+.md-content ul ul {
+	margin-left: 0em;
+}
+.md-content :is(pre, table, blockquote) {
+	margin-left: 1.5em;
+	margin-right: 0.5em;
+}
+.task-list-item {
+	list-style: none;
+	text-indent: -1.5em;
+}
+.task-list-item input {
+	display: none;
+}
+.task-list-item::before {
+	display: inline-block;
+	width: 1em;
+	height: 1em;
+	vertical-align: middle;
+	text-align: center;
+	border: 1px solid #0af;
+	border-radius: 4px;
+	line-height: 1.1;
+	content: "";
+}
+.task-list-item:has(:checked)::before {
+	background-color: #0af;
+	color: white;
+	text-indent: 0em;
+	content: "\2714";
+}
+.md-content p:has(img) {
+	margin-left: 1em;
+}
+.md-content img {
+	max-width: 90%;
+	border: solid 1px silver;
+}
+</style>

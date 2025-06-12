@@ -1,4 +1,8 @@
 <style>
+h1, h2, h3, h4, h5, h6, dt, strong, .bold {
+	font-family: Arial, Helvetica, "Hiragino Sans", "BIZ UDPGothic", "Yu Gothic", sans-serif;
+	font-weight: bold;
+}
 h1, h2, h3, h4, h5, h6 {
 	margin-top: 0.7em;
 	margin-bottom: 0.5em;
@@ -50,7 +54,7 @@ ul, ol {
 	padding-left: 1.5em;
 	margin-left: 0em;
 }
-pre, blockquote {
+pre:not(.mermaid), blockquote {
 	border: 2px solid #ccf;
 	background-color: #eef;
 	color: navy;
