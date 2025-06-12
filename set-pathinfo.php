@@ -1,5 +1,20 @@
 <?php
-// need PHP7.0 or later (for "??")
+// Copyright 2025 akamoz.jp
+//
+// This file is part of tiny-filelist.
+//
+// Tiny-filelist is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as
+// published by the Free Software Foundation, either version 3 of the
+// License, or (at your option) any later version.
+//
+// Tiny-filelist program is distributed in the hope that it will be useful, but
+// WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+// Affero General Public License for more details.
+//
+// You should have received a copy of the Affero GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const VERSION = "0.1";
 const PASSHASHFILE = ".tiny-filelist-passhash";
@@ -32,9 +47,11 @@ require_once __DIR__."/pathprefix.inc";
 $scriptpath = prependPathPrefix($scriptpath);
 
 // $rootpath: path in the filesystem, without trailing slash
+// empty string indicates the top of the hierarchy.
 $rootpath = $_SERVER['DOCUMENT_ROOT'];
 if (strlen($rootpath) < 1)
 	$rootpath = __DIR__;
+$rootpath = rtrim($rootpath, "/");
 
 // $targetfile: full path to the target file
 $targetfile = rtrim($rootpath.$path, "/");

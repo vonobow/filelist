@@ -1,4 +1,21 @@
 <?php
+// Copyright 2025 akamoz.jp
+//
+// This file is part of tiny-filelist.
+//
+// Tiny-filelist is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as
+// published by the Free Software Foundation, either version 3 of the
+// License, or (at your option) any later version.
+//
+// Tiny-filelist program is distributed in the hope that it will be useful, but
+// WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+// Affero General Public License for more details.
+//
+// You should have received a copy of the Affero GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 require_once __DIR__."/set-pathinfo.php";
 require_once __DIR__."/common-util.inc";
 
@@ -81,13 +98,16 @@ function putLink($url, $text, $merge = [], $remove = []) {
 			unset($opt[$v]);
 		$opt = array_merge($opt, $merge);
 	}
-	echo '<a href="',
-		htmlspecialchars($url);
-	if (count($opt) > 0)
-		echo "?", http_build_query($opt);
-	echo '">',
-		htmlspecialchars($text),
-		'</a>';
+	if (is_string($url)) {
+		echo '<a href="',
+			htmlspecialchars($url);
+		if (count($opt) > 0)
+			echo "?", http_build_query($opt);
+		echo '">';
+	}
+	echo htmlspecialchars($text);
+	if (is_string($url))
+		echo "</a>";
 }
 
 function putBreadcrumb($url, $path) {
@@ -133,6 +153,22 @@ function putDotsLink($url) {
 	echo "</span> ";
 }
 
+function putSymbolicLink($link, $merge = [], $remove = []) {
+	global $base;
+	if ($link["url"] === false)
+		echo "<s class='dangling'>";
+	if (!is_string($link["url"]))
+		echo htmlspecialchars($link["dir"]);
+	else {
+		if ($link["inTree"])
+			echo "<span class='document-root'></span>";
+		putLink($base.$link["url"], $link["dir"], $merge, $remove);
+	}
+	echo $link["name"];
+	if ($link["url"] === false)
+		echo "</s>";
+}
+
 $tz = new DateTimeZone(date_default_timezone_get());
 $dt = (new DateTime())->setTimeZone($tz);
 function str_time($mtime) {
@@ -164,10 +200,59 @@ function list_entries(&$entries, $url, $forDirectory = false) {
 			echo htmlspecialchars($name);
 		else if ($forDirectory)
 			putLink($url.$name."/", $name, null);
-		else
+		else if ($dirent["isFile"])
 			putLink($url.$name, $name, null);
+		else
+			echo "<i class='special'>", htmlspecialchars($name), "</i>";
+		if ($dirent["isLink"]) {
+			echo " -> ";
+			putSymbolicLink($dirent["next"]);
+			if ($dirent["final"]["url"] === false)
+				echo " <span class='dangling-indicator'></span>";
+			else {
+				echo " <span class='final-target'>(";
+				putSymbolicLink($dirent["final"]);
+				echo ")</span>";
+			}
+		}
 		echo PHP_EOL;
 	}
+}
+
+function isAbsolute($s) {
+	return str_starts_with($s, "/");
+}
+
+function makeAbsolute($target) {
+	global $rootpath, $path;
+	if (isAbsolute($target))
+		return $target;
+	return $rootpath.$path.$target;
+}
+
+function splitTargetPath($target, $isRealPath) {
+	global $rootpath, $path;
+	if ($target == false)
+		return [ "dir" => "", "name" => "", "url" => false ];
+	if (preg_match('|(.*)(/+[^/]+/*)$|', $target, $m) != 1)
+		return [ "dir" => "", "name" => $target, "url" => null ];
+	$realpath = $isRealPath ? $m[1] : realpath(makeAbsolute($m[1]));
+	$dir = $m[1];
+	$url = null; // assume out of tree
+	$inTree = false;
+	$realroot = realpath($rootpath);
+	if (!is_string($realpath) || !is_dir($realpath))
+		$url = false;	// dangling
+	else {
+		if (str_starts_with($realpath, $realroot)) {
+			$url = substr($realpath, strlen($realroot));
+			if ($isRealPath) {
+				$dir = $url;
+				$inTree = true;
+			}
+		}
+	}
+	return [ "dir" => $dir, "name" => $m[2], "inTree" => $inTree, "url" => $url ];
 }
 
 function list_dir($path) {
@@ -187,11 +272,23 @@ function list_dir($path) {
 		if ($hidedots && (substr($dirent, 0, 1) == "."))
 			continue;
 		$stat = lstat($abspath.$dirent);
-		$ent = [ "name" => $dirent, "mtime" => $stat["mtime"], "size" => $stat["size"] ];
-		if (is_dir($abspath.$dirent))
+		$absname = $abspath.$dirent;
+		$ent = [
+			"name" => $dirent, "mtime" => $stat["mtime"], "size" => $stat["size"],
+			"isLink" => false
+		];
+		if (is_link($absname)) {
+			$target = readlink($absname);
+			$ent["isLink"] = true;
+			$ent["next"] = splitTargetPath($target, false);
+			$ent["final"] = splitTargetPath(realpath(makeAbsolute($target)), true);
+		}
+		if (is_dir($absname))
 			$dirlist[] = $ent;
-		else
+		else {
+			$ent["isFile"] = is_file($absname);
 			$filelist[] = $ent;
+		}
 	}
 	closedir($fd);
 	usort($dirlist, "dirent_compare_by_name");
@@ -208,7 +305,8 @@ function list_dir($path) {
 	echo "<li class='upload-target'>drop files here to upload", PHP_EOL;
 	echo "</ul></div>", PHP_EOL;
 
-	echo "<p class='thumbnail'>";
+	echo "<p id='thumbnail' class='thumbnail'>";
+	$thumbcount = 0;
 	foreach ($filelist as $dirent) {
 		$name = $dirent["name"];
 		$imgpath = $path.$name;
@@ -220,7 +318,9 @@ function list_dir($path) {
 			"'><img height=100 src='",
 			htmlspecialchars($thpath),
 			"'></a> ";
+		$thumbcount++;
 	}
+	echo "<script>const thumbcount = {$thumbcount};</script>", PHP_EOL;
 }
 require __DIR__."/html-header.inc";
 ?>
@@ -788,6 +888,11 @@ $AEL("DOMContentLoaded", _ => {
 	AEL($ID("abort-button"), "click", _ => {
 		aborter.abort("aborted by user");
 	});
+	$AEL("click", ev => {
+		if (ev.target.closest(".document-root") == null)
+			return;
+		location.href = <?=J($base)?>;
+	});
 	for (let e of [
 		$QS("header"), $QS(".item-lists"), $QS(".thumbnail"), $QS(".foot-commander")
 	]) {
@@ -798,6 +903,27 @@ $AEL("DOMContentLoaded", _ => {
 			inner.append(child);
 		inner.insertAdjacentHTML("beforeend", "<div class='dimmer'></div>");
 	}
+	const showThumbnail = $ID("show-thumbnail");
+	const showThumbnailText = "thumbnail";
+	const backToTopText = "top";
+	if (thumbcount < 1)
+		showThumbnail.remove();
+	else {
+		const e = showThumbnail;
+		e.innerText = showThumbnailText;
+		AEL(e, "click", _ => {
+			if (e.innerText == backToTopText) {
+				$QS(".content-body").scroll(0, 0);
+				e.innerText = showThumbnailText;
+			}
+			else {
+				$ID("thumbnail").scrollIntoView({
+					block: "start", inline: "start"
+				});
+				e.innerText = backToTopText;
+			}
+		})
+	}
 });
 </script>
 <style type="text/css"><!--
@@ -805,6 +931,7 @@ body {
 	margin: 0px;
 	padding: 0px;
 	line-height: 1.3;
+	font-family: sans-serif;
 }
 .body {
 	height: 100vh;
@@ -814,7 +941,7 @@ body {
 	grid-template-rows: auto 1fr;
 }
 header {
-	overflow: scroll;
+	overflow: auto;
 	white-space: nowrap;
 	border-bottom: 1px solid silver;
 }
@@ -829,12 +956,12 @@ h1, .info, .commander,
 	padding: 0px 4px 4px 4px;
 }
 .content-body {
-	overflow-y: scroll;
+	overflow-y: auto;
 	overflow-x: hidden;
 }
 .item-lists, .foot-commander {
 	width: 100%;
-	overflow-x: scroll;
+	overflow-x: auto;
 }
 h1 {
 	font-size: 120%;
@@ -889,6 +1016,7 @@ p { margin: 0em; }
 	color: gray;
 	padding: 3px;
 	border-radius: 0.3em;
+	cursor: pointer;
 }
 .button a {
 	text-decoration: none;
@@ -1040,8 +1168,36 @@ div.dimmer {
 .foot-commander {
 	white-space: nowrap;
 }
+.final-target {
+	font-size: 90%;
+	opacity: 0.5;
+}
+.document-root::before {
+	content: "root";
+	display: inline-block;
+	font-size: 75%;
+	margin: 0px 1px;
+	padding: 1px;
+	border: 1px solid black;
+	border-radius: 4px;
+	cursor: pointer;
+}
+.dangling {
+	opacity: 0.5;
+}
+.dangling-indicator::before {
+	content: "dangling";
+	display: inline-block;
+	font-size: 75%;
+	color: white;
+	background-color: gray;
+	padding: 2px;
+	border-radius: 4px;
+}
+.special {
+	color: gray;
+}
 --></style>
-</head>
 <body>
 <div class="body">
 <header>
@@ -1057,6 +1213,7 @@ div.dimmer {
 <?php putSortLink($url, "s", "sort by size") ?>
 <?php putSortLink($url, "n", "sort by name") ?>
 <?php putDotsLink($url) ?>
+<span id="show-thumbnail" class="button"></span>
 <span class="timezone">TZ=<?= $dt->format("T (O)")?></span>
 <span class="version">ver <?=VERSION?></span>
 </header>
