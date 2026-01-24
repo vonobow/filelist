@@ -58,19 +58,9 @@ addEventListener("DOMContentLoaded", () => {
 		e.parentElement.textContent = e.textContent;
 	}
 });
-addEventListener("keydown", ev => {
-	switch (ev.key) {
-	case "ArrowUp":
-		if (ev.isComposing)
-			return;
-		if (!ev.altKey)
-			return;
-		location.href = <?=J("{$scriptpath}index.php{$parentpath}")?>;
-		break;
-	}
-});
 </script>
 <?php
+require_once(__DIR__."/go-up.pjs");
 chdir(__DIR__);
 echo file_get_contents("default.fhtml");
 echo file_get_contents("md-default.fhtml");
