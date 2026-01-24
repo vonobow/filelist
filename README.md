@@ -7,12 +7,11 @@ CAUTION: This is mainly intended to use in closed environment, such as container
 * It CANNOT remove any files for safety.
 * Creating directories can be done by uploading files with containing directories.
 
- If you are interested in showing markdown, visit `with-md` branch.
+ If you are interested in viewing markdowns, visit `with-md` branch.
 
 ## Requirements
 
 * PHP (>= 8.0)
-* php-intl
 
 ### Limitation
 
@@ -68,15 +67,19 @@ php -S localhost:12345 path/to/router.php
 
 ## Using from the browser
 
-* You can show files by clicking the links. Clicked file is handled with default behavior of your browser.
-* Or, explicitly download / show the file by using the triple-dot menu.
+* You can view files by clicking the links. Clicked file is handled with default behavior of your browser.
+* Or, explicitly download / view the file by using the triple-dot menu.
+	* With shift key, a new window appears.
+	* With ctrl key, a new tab appears.
+* Press meta + UP key to move up the directory hierarchy.
+* Right-clicking a sort button always sorts items in descending order.
 * You can upload file by drag-and-drop operation, or using "select files to upload" button.
 * It may be used from mobile devices, if you can resolve https issue, which is beyond the scope of this document.
 * Files shown in italic font are special files.
 
 ### Symbolic links
 
-* Synbolic links are shonw with `->`.
+* Symbolic links are shown with `->`.
 * The path just after `->` is the direct target of the symbolic link.
 * The path after the direct target is the final target (`realpath`ed) target.
 * The hyperlinks point the container (the parent directory) of each target.
@@ -84,6 +87,7 @@ php -S localhost:12345 path/to/router.php
 ### Thumbnails
 
 * For a file named `filename`, if there is a file named `th/filename`, this file is used as the thumbnail.
+* if `FILELIST_NO_THUMBNAIL` environment variable is set, thumbnails are not shown, but `load thumbnail` button appears.
 * Thumbnail files can be generated, for instance, by using ImageMagick like following.
 
 ```

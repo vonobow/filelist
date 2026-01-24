@@ -16,17 +16,18 @@
 // You should have received a copy of the Affero GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-const VERSION = "0.2";
+const VERSION = "0.6";
 const PASSHASHFILE = ".tiny-filelist-passhash";
 const ENV_TEMPDIR = "FILELIST_TEMPDIR";
+const ENV_NO_THUMBNAIL = "FILELIST_NO_THUMBNAIL";
 
 // strip last component from specified path.
 //	returned string has no trailling slash.
 //	consecutive slashes are also removed.
 //	if $path has no slash, return as it is.
-//	if $path has only slash(es) at the end, just remove it.
+//	if $path has slash(es) only at the end, just remove it.
 function stripLastComponent($path) {
-	return preg_replace("|/+[^/]*/*\$|", "\$1", $path);
+	return preg_replace("|/+[^/]*/*\$|", "", $path);
 }
 
 // $path: path specified in URL, with preceeding slash
