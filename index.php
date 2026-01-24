@@ -31,62 +31,23 @@ if (substr($rawpath, -1) != "/") {
 $base = $scriptpath."index.php";
 $url = $base.$path;
 
-$hidedots = 1;
+$hideDots = 1;
 $sortby = "n";
-$descending = false;
-$sortsign = 1;
+$descending = 0;
 
 $linkopt = [];
 
 if (isset($_REQUEST["dots"])) {
 	$linkopt["dots"] = 1;
-	$hidedots = 0;
+	$hideDots = 0;
 }
-
-$sortby_values = array_flip([ "t", "s", "n" ]);
-if (isset($sortby_values[$_REQUEST["sort"] ?? null])) {
+if (in_array($_REQUEST["sort"] ?? null, [ "t", "s", "n" ])) {
 	$sortby = $_REQUEST["sort"];
 	$linkopt["sort"] = $sortby;
 }
 if (isset($_REQUEST["rev"])) {
 	$descending = intval($_REQUEST["rev"]);
 	$linkopt["rev"] = 1;
-}
-if ($descending)
-	$sortsign = -1;
-
-function dirent_compare_by_name($a, $b) {
-	global $sortsign;
-	return $sortsign * strcmp($a["name"], $b["name"]);
-}
-
-function dirent_compare_by_name_asc($a, $b) {
-	return strcmp($a["name"], $b["name"]);
-}
-
-function dirent_compare_by_time($a, $b) {
-	global $sortsign;
-	return $sortsign * ($a["mtime"] - $b["mtime"]);
-}
-
-function dirent_compare_by_size($a, $b) {
-	global $sortsign;
-	return $sortsign * ($a["size"] - $b["size"]);
-}
-
-function get_sort_function($forDirectory = false) {
-	global $sortby;
-	switch ($sortby) {
-	case "n":
-		return "dirent_compare_by_name";
-	case "t":
-		return "dirent_compare_by_time";
-	case "s":
-		if ($forDirectory)
-			return "dirent_compare_by_name_asc";
-		return "dirent_compare_by_size";
-	}
-	return null;
 }
 
 function putLink($url, $text, $merge = [], $remove = []) {
@@ -100,7 +61,7 @@ function putLink($url, $text, $merge = [], $remove = []) {
 	}
 	if (is_string($url)) {
 		echo '<a href="',
-			htmlspecialchars($url);
+			str_replace("%", "%25", htmlspecialchars($url));
 		if (count($opt) > 0)
 			echo "?", http_build_query($opt);
 		echo '">';
@@ -120,102 +81,6 @@ function putBreadcrumb($url, $path) {
 		$url .= "{$v}/";
 		echo "/";
 		putLink($url, $v);
-	}
-}
-
-function putSortLink($url, $flag, $text) {
-	global $sortby, $descending;
-	$opt = [ "sort" => $flag ];
-	echo "<span class='button";
-	if ($flag == $sortby) {
-		echo " selected";
-		if ($descending)
-			; // echo " reversed";
-		else
-			$opt["rev"] = 1;
-	}
-	echo "'>";
-	putLink($url, $text, $opt, [ "rev" ]);
-	echo "</span> ";
-}
-
-function putDotsLink($url) {
-	global $hidedots;
-	echo "<span class='button";
-	if ($hidedots) {
-		echo "'>";
-		putLink($url, "dot files", [ "dots" => 1 ]);
-	}
-	else {
-		echo " selected'>";
-		putLink($url, "dot files", [], [ "dots" ]);
-	}
-	echo "</span> ";
-}
-
-function putSymbolicLink($link, $merge = [], $remove = []) {
-	global $base;
-	if ($link["url"] === false)
-		echo "<s class='dangling'>";
-	if (!is_string($link["url"]))
-		echo htmlspecialchars($link["dir"]);
-	else {
-		if ($link["inTree"])
-			echo "<span class='document-root'></span>";
-		putLink($base.$link["url"], $link["dir"], $merge, $remove);
-	}
-	echo $link["name"];
-	if ($link["url"] === false)
-		echo "</s>";
-}
-
-$tz = new DateTimeZone(date_default_timezone_get());
-$dt = (new DateTime())->setTimeZone($tz);
-function str_time($mtime) {
-	global $dt;
-	return "<span class='date'>".
-		$dt->setTimeStamp($mtime)->format("D, d M Y H:i:s").
-		"</span>". PHP_EOL;
-}
-
-$NUMFMT = new NumberFormatter(Locale::getDefault(), NumberFormatter::DECIMAL);
-$NUMFMT->setAttribute(NumberFormatter::GROUPING_USED, 1);
-$NUMFMT->setAttribute(NumberFormatter::GROUPING_SIZE, 3);
-
-function list_entries(&$entries, $url, $forDirectory = false) {
-	global $NUMFMT;
-	foreach ($entries as $dirent) {
-		$name = $dirent["name"];
-		echo "<li data-filename='",
-			htmlspecialchars($name),
-			"'>", str_time($dirent["mtime"]),
-			" <span class='filesize";
-		if ($forDirectory)
-			echo " directory'>DIR";
-		else
-			echo "'>", $NUMFMT->format($dirent["size"]);
-		echo "</span> ";
-		echo "<span class='file-context-menu-popper'>...</span> ";
-		if (!$forDirectory && preg_match("/\\.php\$/", $name))
-			echo htmlspecialchars($name);
-		else if ($forDirectory)
-			putLink($url.$name."/", $name, null);
-		else if ($dirent["isFile"])
-			putLink($url.$name, $name, null);
-		else
-			echo "<i class='special'>", htmlspecialchars($name), "</i>";
-		if ($dirent["isLink"]) {
-			echo " -> ";
-			putSymbolicLink($dirent["next"]);
-			if ($dirent["final"]["url"] === false)
-				echo " <span class='dangling-indicator'></span>";
-			else {
-				echo " <span class='final-target'>(";
-				putSymbolicLink($dirent["final"]);
-				echo ")</span>";
-			}
-		}
-		echo PHP_EOL;
 	}
 }
 
@@ -255,21 +120,19 @@ function splitTargetPath($target, $isRealPath) {
 	return [ "dir" => $dir, "name" => $m[2], "inTree" => $inTree, "url" => $url ];
 }
 
-function list_dir($path) {
-	global $rootpath, $url, $hidedots;
+function enumFilesystemItems($path) {
+	global $rootpath, $url, $hideDots;
 	$abspath = $rootpath.$path;
 	$fd = @opendir($abspath);
-	if ($fd === FALSE) {
-		echo "<p>incorrect path";
-		return;
-	}
+	if ($fd === FALSE)
+		return null;
 	$dirlist = array();
 	$filelist = array();
 	for (;;) {
 		$dirent = readdir($fd);
 		if ($dirent === FALSE)
 			break;
-		if ($hidedots && (substr($dirent, 0, 1) == "."))
+		if ($hideDots && (substr($dirent, 0, 1) == "."))
 			continue;
 		$stat = lstat($abspath.$dirent);
 		$absname = $abspath.$dirent;
@@ -287,42 +150,54 @@ function list_dir($path) {
 			$dirlist[] = $ent;
 		else {
 			$ent["isFile"] = is_file($absname);
+			if ($ent["isFile"]) {
+				$th = $abspath."th/".$dirent;
+				$ent["thumbnail"] = is_file($th) && is_readable($th);
+			}
 			$filelist[] = $ent;
 		}
 	}
 	closedir($fd);
-	usort($dirlist, "dirent_compare_by_name");
-	usort($dirlist, get_sort_function(true));
-	usort($filelist, "dirent_compare_by_name");
-	usort($filelist, get_sort_function());
-
-	echo "<div class='item-lists'><ul class='directories'>", PHP_EOL;
-	list_entries($dirlist, $url, true);
-	echo "</ul>", PHP_EOL;
-
-	echo "<ul class='files droptarget-current'>", PHP_EOL;
-	list_entries($filelist, prependPathPrefix($path));
-	echo "<li class='upload-target'>drop files here to upload", PHP_EOL;
-	echo "</ul></div>", PHP_EOL;
-
-	echo "<p id='thumbnail' class='thumbnail'>";
-	$thumbcount = 0;
-	foreach ($filelist as $dirent) {
-		$name = $dirent["name"];
-		$imgpath = $path.$name;
-		$thpath = $path."th/".$name;
-		if (!is_readable($rootpath.$thpath))
-			continue;
-		echo "<a href='",
-			htmlspecialchars($imgpath),
-			"'><img height=100 src='",
-			htmlspecialchars($thpath),
-			"'></a> ";
-		$thumbcount++;
-	}
-	echo "<script>const thumbcount = {$thumbcount};</script>", PHP_EOL;
+	return [
+		"dirs" => $dirlist,
+		"files" => $filelist
+	];
 }
+
+function getExpandedIniSize($key) {
+	$v = ini_get($key);
+	if (is_numeric($v))
+		return intval($v);
+	$suf = substr($v, -1);
+	$v = substr($v, 0, -1);
+	if (!is_numeric($v)) {
+		http_response_code(500);
+		exit("cannot recognize setting for {$key}?");
+	}
+	$v = intval($v);
+	switch (strtolower($suf)) {
+	case "k": return $v * 1024;
+	case "m": return $v * 1024 * 1024;
+	case "g": return $v * 1024 * 1024 * 1024;
+	}
+	http_response_code(500);
+	exit("unknown size suffix for {$key}");
+}
+
+$maxUploadSize = getExpandedIniSize("upload_max_filesize");
+$maxPostSize = getExpandedIniSize("post_max_size");
+$memorySize = getExpandedIniSize("memory_limit");
+if ($maxPostSize > 0)
+	$maxUploadSize = min($maxUploadSize, $maxPostSize);
+if ($memorySize > 0)
+	$maxUploadSize = min($maxUploadSize, $memorySize);
+if ($maxUploadSize < 4096) {
+	http_response_code(500);
+	exit("max upload size is too small?");
+}
+
 require __DIR__."/html-header.inc";
+require __DIR__."/go-up.pjs";
 ?>
 <title><?php echo htmlspecialchars($path) ?></title>
 <script>
@@ -389,6 +264,8 @@ dequeue() {
 },
 remove(id) {
 	for (const q of this.pending) {
+		if (q == null)
+			continue;
 		const i = q.findIndex(v => v.id == id);
 		if (i >= 0) {
 			q.splice(i, 1);
@@ -502,12 +379,18 @@ function fetchAndCatch(elem, id, url, opt = {}) {
 	url += `${url.includes("?")?"&":"?"}nologin=true`;
 	return fetchWithRetry(url, opt)
 	.catch(err => Promise.reject(err.toString()))
-	.then(resp => resp.text().then(msg => resp.ok ? msg : Promise.reject(msg)))
+	.then(resp => resp.text().then(msg => {
+		if (resp.ok)
+			return msg;
+		if (resp.status == 413)
+			throw "too large to upload: check web server settings";
+		throw msg;
+	}))
 	.then(message => postSuccess(elem, id, message))
 	.catch(message => postFailed(elem, id, message));
 }
 
-const scriptpath = <?=J($scriptpath)?>;
+const scriptpath = <?=JJ($scriptpath)?>;
 function uploadFile(file, path, elem, id) {
 	postEvent(elem, "filelist-doing", { id });
 	let form = new FormData();
@@ -518,8 +401,9 @@ function uploadFile(file, path, elem, id) {
 	);
 }
 
-const segmentedUploadLimitBytes = 1536 * 1024;
-const useSegmentedUpload = <?=J(getenv(ENV_TEMPDIR) !== false)?>;
+const maxUploadSize = <?=$maxUploadSize?>;
+const segmentedUploadLimitBytes = Math.min(10 * 1024 * 1024, Math.floor(maxUploadSize * 0.75));
+const useSegmentedUpload = <?=JJ(getenv(ENV_TEMPDIR) !== false)?>;
 const uploadInitMutex = SerializedPromise.create();
 function initiateSegmentedUpload(q, file, path, elem, id) {
 	return uploadInitMutex.request(_ => fetchWithRetry(
@@ -668,32 +552,177 @@ function uploadDataItem(q, item, path, elem) {
 		.then(_ => readEntries(item.createReader()));
 	}, 5);
 }
+
+const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+	weekday: "short", year: "numeric", month: "short", day: "2-digit",
+	hour: "2-digit", minute: "2-digit", second: "2-digit"
+});
+function formatDateTime(dt, fmt = dateTimeFormatter) {
+	const v = fmt.formatToParts(dt)
+		.reduce((out, v) => { out[v.type] = v.value; return out; }, {});
+	return `${v.weekday}, ${v.day} ${v.month.substring(0, 3)} ${v.year} ${v.hour}:${v.minute}:${v.second}`;
+}
+function createNewElement(tag, cls = "") {
+	const child = $D.createElement(tag);
+	child.className = cls;
+	return child;
+}
+function appendNewElement(parent, tag, cls = "") {
+	const child = createNewElement(tag, cls);
+	parent.append(child);
+	return child;
+}
+function queryString(param) { // URLSearchParams
+	const s = param.toString;
+	if (s.length < 1)
+		return "";
+	return `?${s}`;
+}
+let linkopt = <?=JJ($linkopt)?>;
+function appendLink(e, url, text, merge = {}, remove = []) {
+	if (typeof url == "string") {
+		const q = new URLSearchParams();
+		if (merge !== null) {
+			for (k in linkopt) q.set(k, linkopt[k]);
+			for (v of remove) q.delete(v);
+			for (k in merge) q.set(k, merge[k]);
+		}
+		const a = appendNewElement(e, "a");
+		a.href = url.replace(/%/g, "%25") + queryString(q);
+		a.innerText = text;
+	}
+	else
+		e.append(text);
+}
+function appendSymbolicLink(e, link, merge = {}, remove = []) {
+	const base = <?=JJ($base)?>;
+	if (link.url === false)
+		e = appendNewElement(e, "s", "dangling");
+	if (typeof link.url != "string")
+		e.append(link.dir);
+	else {
+		if (link.inTree) {
+			const a = appendNewElement(e, "a", "document-root");
+			a.href = <?=JJ($base)?>;
+		}
+		appendLink(e, `${base}${link.url}`, link.dir, merge, remove);
+	}
+	e.append(link.name);
+}
+
+let sortBy = <?=JJ($sortby)?>;
+let descending = <?=JJ($descending)?>;
+let hideDots = <?=JJ($hideDots)?>;
+function sortFunc(forDirectory) {
+	switch (sortBy) {
+	case "s": // by size
+		if (descending)
+			return (a, b) => b.size - a.size;
+		else
+			return (a, b) => a.size - b.size;
+	case "t": // by time
+		if (descending)
+			return (a, b) => b.mtime - a.mtime;
+		else
+			return (a, b) => a.mtime - b.mtime;
+	}
+	if (descending)
+		return (a, b) => a.name == b.name ? 0 : ( b.name < a.name ? -1 : 1 );
+	return (a, b) => a.name == b.name ? 0 : ( a.name < b.name ? -1 : 1 );
+}
+
+function list_entries(e, entries, url, forDirectory = false) {
+	if (entries.length < 1)
+		return;
+	e.innerHTML = "";
+	if (!forDirectory || sortBy != "s")
+		entries.sort(sortFunc());
+	for (const v of entries) {
+		const name = v.name;
+		const li = createNewElement("li");
+		if (forDirectory)
+			e.append(li);
+		else
+			e.append(li);
+		li.dataset.filename = name;
+		const mtime = appendNewElement(li, "span", "date");
+		mtime.innerText = formatDateTime(new Date(v.mtime * 1000));
+		li.append(" ");
+		const size = appendNewElement(li, "span", "filesize");
+		if (forDirectory) {
+			size.classList.add("directory");
+			size.innerText = "DIR";
+		}
+		else
+			size.innerText = numfmt(v.size);
+		li.append(" ");
+		appendNewElement(li, "span",  "file-context-menu-popper").innerText = "...";
+		li.append(" ");
+		if (!forDirectory && name.match(/\.php$/))
+			li.append(name);
+		else if (forDirectory)
+			appendLink(li, `${url}${name}/`, name, null);
+		else if (v.isFile)
+			appendLink(li, `${url}${name}`, name, null);
+		else
+			appendNewElement(li, "i", "special").innerText = name;
+		if (v.isLink) {
+			li.append(" -> ");
+			appendSymbolicLink(li, v.next);
+			li.append(" ");
+			if (v.final.url === false)
+				appendNewElement(li, "span", "dangling-indicator");
+			else {
+				const span = appendNewElement(li, "span", "final-target");
+				span.append("(");
+				appendSymbolicLink(span, v.final);
+				span.append(")");
+			}
+		}
+	}
+}
+
+const fsysItems = <?=JJ(enumFilesystemItems($path))?>;
+const filepath = <?=JJ(prependPathPrefix($path))?>;
+function loadThumbnails() {
+	const thumb = $ID("thumbnail");
+	thumb.innerHTML = "";
+	fsysItems.files.filter(v => v.thumbnail).forEach(v => {
+		const a = appendNewElement(thumb, "a");
+		a.href = `${filepath}${v.name}`;
+		const img = appendNewElement(a, "img");
+		img.height = 100;
+		img.src = `${filepath}th/${v.name}`;
+		thumb.append(" ");
+	});
+}
+function listFilesystemItems() {
+	const url = <?=JJ($base.$path)?>;
+	const outer = $ID("filesystem-item-list");
+	if (fsysItems == null) {
+		outer.innerHTML = "";
+		return;
+	}
+	list_entries(QS(outer, "ul.directories"), fsysItems.dirs, url, true);
+	list_entries(QS(outer, "ul.files"), fsysItems.files, filepath);
+}
 $AEL("DOMContentLoaded", _ => {
+	listFilesystemItems();
 	let selected = $QS(".commander .selected");
 	let url = new URL($D.location);
 	let curRev = parseInt(url.searchParams.get("rev") ?? "0");
 	let curSort = url.searchParams.get("sort") ?? "n";
-	function setReverse(e, r) {
-		if (r)
-			e.classList.add("reversed");
-		else
-			e.classList.remove("reversed");
-	}
-	if ($D.referrer) {
-		let url = new URL($D.referrer);
-		let prevSort = url?.searchParams.get("sort") ?? "n";
-		let prevRev = parseInt(url?.searchParams.get("rev") ?? "0");
-		if (prevSort == curSort && prevRev != curRev) {
-			setReverse(selected, prevRev);
-			$AEL("load", _ => {
-				selected.classList.add("animate");
-				setReverse(selected, curRev);
-			});
+	function isDropAllowed(ev) {
+		if (!Array.from(ev.dataTransfer.items).some(v => v.kind == "file")) {
+			ev.dataTransfer.dropEffect = "none";
+			ev.dataTransfer.effectAllowed = "none";
+			return false;
 		}
-		else
-			setReverse(selected, curRev);
+		return true;
 	}
 	$AEL("dragenter", ev => {
+		if (!isDropAllowed(ev))
+			return;
 		let e = getDropTarget(ev.target);
 		if (e == null)
 			return;
@@ -701,6 +730,8 @@ $AEL("DOMContentLoaded", _ => {
 		e.classList.add("dragging");
 	});
 	$AEL("dragover", ev => {
+		if (!isDropAllowed(ev))
+			return;
 		let e = getDropTarget(ev.target);
 		if (e == null)
 			return;
@@ -722,7 +753,13 @@ $AEL("DOMContentLoaded", _ => {
 	let job_queued = 0;
 	let job_done = 0;
 	let job_failed = 0;
-	status.innerText = <?=J(realpath($rootpath.$path) ?: "")?>;
+
+	if (fsysItems == null) {
+		status.innerText = "incorrect path";
+		status.classList.add("error");
+	}
+	else
+		status.innerText = <?=JJ(realpath($rootpath.$path))?>;
 	function clearXfering() {
 		document.body.classList.remove("xfering");
 		aborter = new AbortController();
@@ -737,7 +774,7 @@ $AEL("DOMContentLoaded", _ => {
 		job_queued = 0;
 		job_done = 0;
 		job_failed = 0;
-		let path = <?=J($path)?>;
+		let path = <?=JJ($path)?>;
 		if (e.closest(".directories"))
 			path += `${e.dataset.filename}`;
 
@@ -840,7 +877,7 @@ $AEL("DOMContentLoaded", _ => {
 		popupMenu.style.left = `${ev.pageX}px`;
 		popupMenu.style.top = `${ev.pageY}px`;
 	});
-	const pathinfo = <?= J([
+	const pathinfo = <?= JJ([
 			"scriptpath" => $scriptpath,
 			"path" => $path
 		]) ?>;
@@ -851,8 +888,18 @@ $AEL("DOMContentLoaded", _ => {
 		return `${pathinfo.scriptpath}${apiname}${pathinfo.path}` +
 			`${selectedElement.closest("li").dataset.filename}${optstr}`;
 	}
-	AEL($ID("show-as-markdown"), "click", () => {
-		location.href = generateContextURL("show-md.php", { force: true });
+	function openContextUrl(ev, apiname, opt) {
+		ev.preventDefault();
+		const url = generateContextURL(apiname, opt);
+		if (ev.shiftKey)
+			open(url, "", "popup=false,top=-1");
+		else if (ev.ctrlKey)
+			open(url);
+		else
+			location = url;
+	}
+	AEL($ID("show-as-markdown"), "click", ev => {
+		openContextUrl(ev, "show-md.php", { force: true });
 	});
 	AEL($ID("show-as-markdown-php"), "click", _ => {
 		const dlg = $ID("php-md");
@@ -874,7 +921,7 @@ $AEL("DOMContentLoaded", _ => {
 			formdata.set("force", true);
 			formdata.set("usephp", true);
 			closeDialog();
-			location.href = generateContextURL("show-md.php", formdata);
+			location = generateContextURL("show-md.php", formdata);
 		}));
 		remover.push(AEL(dlg, "click", ev => {
 			const e = ev.target;
@@ -900,21 +947,27 @@ $AEL("DOMContentLoaded", _ => {
 				closeDialog();
 		}));
 	});
-	AEL($ID("show-as-text"), "click", _ => {
-		location.href = generateContextURL("download.php", { "content-type": "text" });
+	AEL($ID("show-as-text"), "click", ev => {
+		openContextUrl(ev, "download.php", { "content-type": "text" });
 	});
-	AEL($ID("show-as-roff-man"), "click", _ => {
-		location.href = generateContextURL("show-roff.php");
+	AEL($ID("show-as-json"), "click", ev => {
+		openContextUrl(ev, "show-json.php");
 	});
-	AEL($ID("download"), "click", _ => {
-		location.href = generateContextURL("download.php");
+	AEL($ID("show-as-roff-man"), "click", ev => {
+		openContextUrl(ev, "show-roff.php");
+	});
+	AEL($ID("show-as-diff"), "click", ev => {
+		openContextUrl(ev, "show-diff.php");
+	});
+	AEL($ID("download"), "click", ev => {
+		location = generateContextURL("download.php");
 	});
 	AEL($ID("select-files"), "click", _ => {
 		const e = $D.createElement("input");
 		e.type = "file";
 		e.multiple = true;
 		AEL(e, "change", ev => {
-			const path = <?=J($path)?>;
+			const path = <?=JJ($path)?>;
 			document.body.classList.add("xfering");
 			const jobqueue = JobQueue.create();
 			for (let i = 0; i < e.files.length; i++) {
@@ -938,11 +991,76 @@ $AEL("DOMContentLoaded", _ => {
 	AEL($ID("abort-button"), "click", _ => {
 		aborter.abort("aborted by user");
 	});
-	$AEL("click", ev => {
-		if (ev.target.closest(".document-root") == null)
+
+	// commanders
+	function handleSortButtons(ev, e, force) {
+		// sort buttons
+		if (e.dataset.sortBy == sortBy)
+			descending = 1 - descending;
+		else {
+			const prev = QS(ev.currentTarget, `[data-sort-by="${sortBy}"]`);
+			prev.classList.remove("selected", "reversed");
+			e.classList.add("selected");
+			sortBy = e.dataset.sortBy;
+			descending = 0;
+		}
+		if (force)
+			descending = 1;
+		e.classList[descending?"add":"remove"]("reversed");
+		const url = new URL(location);
+		const params = url.searchParams;
+		params.set("sort", sortBy);
+		if (descending)
+			params.set("rev", 1);
+		else
+			params.delete("rev");
+		history.replaceState(null, "", url);
+		listFilesystemItems();
+	}
+	function handleDotFiles(e, force) {
+		const url = new URL(location);
+		const params = url.searchParams;
+		if (hideDots || force)	// make dots visible
+			params.set("dots", 1);
+		else	// make dots invisible
+			params.delete("dots");
+		location = url;	// re-generate item lists by PHP
+	}
+	function handleCommander(ev, force = false) {
+		const e = ev.target.closest("button");
+		if (e == null)
 			return;
-		location.href = <?=J($base)?>;
-	});
+		ev.preventDefault();
+		if (e.id == "dot-files")
+			handleDotFiles(e, force);
+		else if (e.dataset.sortBy)
+			handleSortButtons(ev, e, force);
+	}
+	AEL($QS(".commander"), "click", ev => handleCommander(ev));
+	AEL($QS(".commander"), "contextmenu", ev => handleCommander(ev, true));
+	const selectedSortButton = $QS(`.commander button[data-sort-by="${sortBy}"]`);
+	selectedSortButton.classList.add("selected");
+	if (descending)
+		selectedSortButton.classList.add("reversed");
+	if (!hideDots)
+		$ID("dot-files").classList.add("selected");
+
+	// time zone
+	const tzname = (new Intl.DateTimeFormat([], {
+			hour: "2-digit", timeZoneName: "short"
+		}))
+		.formatToParts(Date.now())
+		.find(v => v.type == "timeZoneName")
+		.value;
+	const tzval = (new Intl.DateTimeFormat([], {
+			hour: "2-digit", timeZoneName: "longOffset"
+		}))
+		.formatToParts(Date.now())
+		.find(v => v.type == "timeZoneName")
+		.value
+		.replace(/[a-z]*/i, "");
+	$ID("timezone").innerText = `TZ=${tzname} (${tzval})`;
+
 	for (let e of [
 		$QS("header"), $QS(".item-lists"), $QS(".thumbnail"), $QS(".foot-commander")
 	]) {
@@ -953,31 +1071,37 @@ $AEL("DOMContentLoaded", _ => {
 			inner.append(child);
 		inner.insertAdjacentHTML("beforeend", "<div class='dimmer'></div>");
 	}
+
+	// thumbnails
 	const showThumbnail = $ID("show-thumbnail");
-	const showThumbnailText = "thumbnail";
-	const backToTopText = "top";
-	if (thumbcount < 1)
-		showThumbnail.remove();
-	else {
-		const e = showThumbnail;
-		e.innerText = showThumbnailText;
-		AEL(e, "click", _ => {
-			if (e.innerText == backToTopText) {
-				$QS(".content-body").scroll(0, 0);
-				e.innerText = showThumbnailText;
-			}
-			else {
-				$ID("thumbnail").scrollIntoView({
-					block: "start", inline: "start"
-				});
-				e.innerText = backToTopText;
-			}
+	if (fsysItems.files.some(v => v.thumbnail)) {
+<?php if (getenv(ENV_NO_THUMBNAIL) === false): ?>
+		loadThumbnails();
+<?php else: ?>
+		AEL($ID("load-thumbnail"), "click", _ => loadThumbnails());
+<?php endif ?>
+		AEL(showThumbnail, "click", _ => {
+			$ID("thumbnail").scrollIntoView({
+				block: "start", inline: "start"
+			});
 		})
 	}
+	else {
+		showThumbnail.remove();
+		$ID("thumbnail").remove();
+	}
+	AEL($ID("go-top"), "click", _ => {
+		$QS(".content-body").scroll(0, 0);
+	})
+
+	// max upload size
+	$QS("#max-upload-size span").innerText = numfmt(
+		useSegmentedUpload ? segmentedUploadLimitBytes : maxUploadSize
+	);
 });
 </script>
 <style type="text/css"><!--
-body {
+body, .commander button {
 	margin: 0px;
 	padding: 0px;
 	line-height: 1.3;
@@ -995,7 +1119,7 @@ header {
 	white-space: nowrap;
 	border-bottom: 1px solid silver;
 }
-h1, .info, .commander,
+h1, .info, .commander, #max-upload-size,
 :is(.item-lists, .thumbnail) .dimmer-container {
 	padding: 2px 4px;
 }
@@ -1059,7 +1183,7 @@ p { margin: 0em; }
 .animate {
 	transition: all 0.3s;
 }
-.button {
+.button, .commander button {
 	display: inline-block;
 	font-size: 70%;
 	border: 1px solid #ccc;
@@ -1067,28 +1191,32 @@ p { margin: 0em; }
 	padding: 3px;
 	border-radius: 0.3em;
 	cursor: pointer;
+	background-color: white;
 }
-.button a {
+.commander button {
+	transition: transform 0.3s;
+}
+button a {
 	text-decoration: none;
 	color: inherit;
 }
-.selected {
+.commander .selected {
 	background-color: #eef;
 	border-width: 2px;
 	border-color: #88f;
 	color: #66f;
 	padding: 2px;
 }
-.reversed {
+.commander .reversed {
 	transform: rotate(180deg);
 }
-.reversed, .file-context-menu p:hover,
+.commander .reversed, .file-context-menu p:hover,
 #php-md button:hover {
 	color: #eef;
 	border-color: #ccf;
 	background-color: #66f;
 }
-.timezone {
+#timezone, #max-upload-size {
 	font-size: 80%;
 	color: #666;
 }
@@ -1103,6 +1231,17 @@ p { margin: 0em; }
 }
 .result, .status {
 	font-size: 80%;
+}
+.status {
+	border: solid 1px transparent;
+	border-radius: 4px;
+	padding: 0px 2px;
+}
+.status.error {
+	border-color: #c00;
+	font-weight: bold;
+	color: #c00;
+	background-color: #fee;
 }
 .result {
 	top: 0px;
@@ -1197,6 +1336,7 @@ div.dimmer {
 	border: 2px solid #0ff;
 	border-radius: 6px;
 	font-size: 90%;
+	user-select: none;
 }
 .file-context-menu.popped-up {
 	display: block;
@@ -1299,6 +1439,9 @@ div.dimmer {
 	font-size: 90%;
 	opacity: 0.5;
 }
+.document-root {
+	text-decoration: none;
+}
 .document-root::before {
 	content: "root";
 	display: inline-block;
@@ -1336,25 +1479,40 @@ div.dimmer {
 <div class="doing-list"></div>
 <div class="pending-list"></div>
 </div>
-<p class="commander"><?php putSortLink($url, "t", "sort by time") ?>
-<?php putSortLink($url, "s", "sort by size") ?>
-<?php putSortLink($url, "n", "sort by name") ?>
-<?php putDotsLink($url) ?>
-<span id="show-thumbnail" class="button"></span>
-<span class="timezone">TZ=<?= $dt->format("T (O)")?></span>
-<span class="version">ver <?=VERSION."-".VARIANT?></span>
+<p class="commander"><button id="sort-by-time" data-sort-by="t">sort by time</button>
+<button id="sort-by-size" data-sort-by="s">sort by size</button>
+<button id="sort-by-name" data-sort-by="n">sort by name</button>
+<button id="dot-files">dot files</button>
+<span id="go-top" class="button">top</span>
+<span id="show-thumbnail" class="button">thumbnail</span>
+<span id="timezone"></span>
+<span class="version">ver <?=VERSION.(defined("VARIANT")?"-".VARIANT:"")?></span>
 </header>
 <div class="content-body">
-<?php list_dir($path) ?>
+<div id="filesystem-item-list" class="item-lists"><ul class="directories">
+</ul><ul class="files droptarget-current">
+<li class="upload-target">drop files here to upload
+</ul></div>
+<p id="thumbnail" class="thumbnail">
+<button id="load-thumbnail">load thumbnail</button>
+<hr>
 <p class="foot-commander"><button id="select-files">select files to upload</button>
 <button id="logout">logout</button>
+<p id="max-upload-size"><?php
+if (getenv(ENV_TEMPDIR) == false)
+	echo ENV_TEMPDIR, " is not set, max upload size is <span></span> bytes";
+else
+	echo "segmented upload is enabled, segment size is <span></span> bytes";
+?>
 </div><!-- .content-body -->
 </div><!-- .body -->
 <div class="file-context-menu">
 <p id="show-as-text">show as plaintext
 <p id="show-as-markdown">show as Markdown
 <p id="show-as-markdown-php">show as Markdown with PHP preprocessing
+<p id="show-as-json">pretty JSON
 <p id="show-as-roff-man">show roff as manpage
+<p id="show-as-diff">show as diff
 <p id="download">download
 </div>
 <dialog id="php-md"><form>

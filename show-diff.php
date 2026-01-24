@@ -23,9 +23,47 @@ require __DIR__."/html-header.inc";
 <title><?= htmlspecialchars($targetfile) ?></title>
 <?php
 require_once(__DIR__."/go-up.pjs");
+?>
+<script id="diff" type="application/json">
+<?=JJ(file_get_contents($targetfile)),PHP_EOL?>
+</script>
+<script>
+addEventListener("DOMContentLoaded", _ => {
+	const $D = document;
+	const e = $D.querySelector("pre");
+	let inHead = false;
+	JSON.parse($D.getElementById("diff").innerText).split("\n").forEach(s => {
+		const p = $D.createElement("p");
+		if (s.startsWith("diff")) {
+			p.classList.add("head");
+			inHead = true;
+		}
+		else if (s.startsWith("index"))
+			p.classList.add("index");
+		else if (s.startsWith("@@")) {
+			p.classList.add("hunk")
+			s = s.replace(/(^@@[^@]+@@).*/, "$1");
+			inHead = false;
+		}
+		else if (s.startsWith("+")) {
+			p.classList.add("added");
+			p.classList.add(inHead ? "file" : "line");
+		}
+		else if (s.startsWith("-")) {
+			p.classList.add("deleted");
+			p.classList.add(inHead ? "file" : "line");
+		}
+		p.innerText = s;
+		e.append(p);
+	});
+});
+</script>
+<?php
 chdir(__DIR__);
 echo file_get_contents("default.fhtml");
-echo file_get_contents("man-default.fhtml");
+echo file_get_contents("diff-default.fhtml");
 echo @file_get_contents("{$targetdir}/default.fhtml");
-echo @file_get_contents("{$targetdir}/man-default.fhtml");
-system("groff -T html -m man ".escapeshellarg($targetfile)." | sed -e '1,/<body>/d'");
+echo @file_get_contents("{$targetdir}/diff-default.fhtml");
+?>
+<pre class="diff">
+</pre>

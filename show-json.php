@@ -23,9 +23,21 @@ require __DIR__."/html-header.inc";
 <title><?= htmlspecialchars($targetfile) ?></title>
 <?php
 require_once(__DIR__."/go-up.pjs");
+$text = @file_get_contents($targetfile);
+if ($text === false) {
+	http_response_code(404);
+	exit("file not found.");
+}
+$json = json_decode("[{$text}]", associative: true, flags: JSON_INVALID_UTF8_SUBSTITUTE);
+if ($json == null) {
+	http_response_code(422);
+	exit("not a json file.");
+}
 chdir(__DIR__);
 echo file_get_contents("default.fhtml");
-echo file_get_contents("man-default.fhtml");
+echo file_get_contents("json-default.fhtml");
 echo @file_get_contents("{$targetdir}/default.fhtml");
-echo @file_get_contents("{$targetdir}/man-default.fhtml");
-system("groff -T html -m man ".escapeshellarg($targetfile)." | sed -e '1,/<body>/d'");
+echo @file_get_contents("{$targetdir}/json-default.fhtml");
+echo "<pre><code>";
+echo htmlspecialchars(json_encode($json[0], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+echo "</code></pre>", PHP_EOL;

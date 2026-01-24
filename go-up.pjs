@@ -15,16 +15,17 @@
 //
 // You should have received a copy of the Affero GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-$prettyJson ??= false;
-function J($v, $jsonFlags = JSON_UNESCAPED_SLASHES) {
-	global $prettyJson;
-	if ($prettyJson)
-		$jsonFlags |= JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT;
-	return json_encode($v, $jsonFlags);
-}
-
-// JSON for JavaScript, must not include </script>
-function JJ($v) {
-	return J($v, 0);
-}
+?>
+<script>
+addEventListener("keydown", ev => {
+	switch (ev.key) {
+	case "ArrowUp":
+		if (ev.isComposing)
+			return;
+		if (!ev.altKey && !ev.metaKey)
+			return;
+		location.href = <?=JJ("{$scriptpath}index.php{$parentpath}")?>;
+		break;
+	}
+});
+</script>
