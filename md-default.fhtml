@@ -6,6 +6,9 @@
 .md-content p {
 	margin-left: 1em;
 }
+.md-content ul p {
+	margin-left: 0em;
+}
 .md-content ul {
 	margin-left: 1em;
 }
