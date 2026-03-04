@@ -26,5 +26,75 @@ function J($v, $jsonFlags = JSON_UNESCAPED_SLASHES) {
 
 // JSON for JavaScript, must not include </script>
 function JJ($v) {
-	return J($v, 0);
+	return J($v, JSON_HEX_TAG);
+}
+
+function isAbsolute($s) {
+	return str_starts_with($s, "/");
+}
+
+function hasDirname($s) {
+	return str_contains($s, "/");
+}
+
+// pathinfo("/a/b/") => { dirname: "/a", basename: "b" }
+// realpath("/") => "/"
+// realpath("/etc") => "/etc"
+// realpath("/etc/") => "/etc"
+
+function splitTargetPath($target) {
+	if ($target == false)
+		return [ "dir" => "", "name" => "" ];
+	$path = explode("/", $target);
+	if (count($path) < 2)
+		return [ "dir" => "", "name" => $target ];
+	$name = array_pop($path);
+	return [ "dir" => implode("/", $path), "name" => "/{$name}" ];
+}
+
+// with trailing slash
+function getDirname($s) {
+	$pathinfo = pathinfo($s);
+	return rtrim($pathinfo["dirname"], "/")."/"; // for lone slash
+}
+
+function getParentURL($abspath) {
+	global $rootpath;
+	if (!is_string($abspath))
+		return $abspath;
+	$dir = getDirname($abspath);	// with trailing slash
+	$realpath = realpath($dir);		// without trailing slash
+	if (!is_string($realpath))
+		return $realpath;
+	$realroot = realpath($rootpath);	// without trailing slash
+	if (!str_starts_with($realpath, $realroot))
+		return null;	// out of tree
+	return substr($dir, strlen($realroot));	// with trailing slash
+}
+
+// $name must be absolute path in the filesystem
+function getFileStat($name, $base = null) {
+	global $rootpath, $path;
+	$stat = @lstat($name);
+	if ($stat === false)
+		return false;
+	$ent = [
+		"isLink" => false,
+		"mtime" => $stat["mtime"],
+		"size" => $stat["size"]
+	];
+	if (is_link($name)) {
+		$ent["isLink"] = true;
+		$target = readlink($name);
+		$ent["next"] = splitTargetPath($target);
+		$abspath = $target;
+		$base ??= "{$rootpath}{$path}";
+		if (!isAbsolute($abspath))
+			$abspath = "{$base}{$target}";
+		$ent["next"]["url"] = getParentURL($abspath);
+		$finaltarget = realpath($name);
+		$ent["final"] = splitTargetPath($finaltarget);
+		$ent["final"]["url"] = getParentURL($finaltarget);
+	}
+	return $ent;
 }

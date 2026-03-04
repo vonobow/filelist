@@ -1,5 +1,5 @@
 <?php
-// Copyright 2025 akamoz.jp
+// Copyright 2025-2026 akamoz.jp
 //
 // This file is part of tiny-filelist.
 //
@@ -84,42 +84,6 @@ function putBreadcrumb($url, $path) {
 	}
 }
 
-function isAbsolute($s) {
-	return str_starts_with($s, "/");
-}
-
-function makeAbsolute($target) {
-	global $rootpath, $path;
-	if (isAbsolute($target))
-		return $target;
-	return $rootpath.$path.$target;
-}
-
-function splitTargetPath($target, $isRealPath) {
-	global $rootpath, $path;
-	if ($target == false)
-		return [ "dir" => "", "name" => "", "url" => false ];
-	if (preg_match('|(.*)(/+[^/]+/*)$|', $target, $m) != 1)
-		return [ "dir" => "", "name" => $target, "url" => null ];
-	$realpath = $isRealPath ? $m[1] : realpath(makeAbsolute($m[1]));
-	$dir = $m[1];
-	$url = null; // assume out of tree
-	$inTree = false;
-	$realroot = realpath($rootpath);
-	if (!is_string($realpath) || !is_dir($realpath))
-		$url = false;	// dangling
-	else {
-		if (str_starts_with($realpath, $realroot)) {
-			$url = substr($realpath, strlen($realroot));
-			if ($isRealPath) {
-				$dir = $url;
-				$inTree = true;
-			}
-		}
-	}
-	return [ "dir" => $dir, "name" => $m[2], "inTree" => $inTree, "url" => $url ];
-}
-
 function enumFilesystemItems($path) {
 	global $rootpath, $url, $hideDots;
 	$abspath = $rootpath.$path;
@@ -134,18 +98,10 @@ function enumFilesystemItems($path) {
 			break;
 		if ($hideDots && (substr($dirent, 0, 1) == "."))
 			continue;
-		$stat = lstat($abspath.$dirent);
+		$ent = [ "name" => $dirent ];
 		$absname = $abspath.$dirent;
-		$ent = [
-			"name" => $dirent, "mtime" => $stat["mtime"], "size" => $stat["size"],
-			"isLink" => false
-		];
-		if (is_link($absname)) {
-			$target = readlink($absname);
-			$ent["isLink"] = true;
-			$ent["next"] = splitTargetPath($target, false);
-			$ent["final"] = splitTargetPath(realpath(makeAbsolute($target)), true);
-		}
+		if (getenv(ENV_NO_FILESTAT) === false)
+			$ent = array_merge($ent, getFileStat($absname));
 		if (is_dir($absname))
 			$dirlist[] = $ent;
 		else {
@@ -573,7 +529,7 @@ function appendNewElement(parent, tag, cls = "") {
 	return child;
 }
 function queryString(param) { // URLSearchParams
-	const s = param.toString;
+	const s = param.toString();
 	if (s.length < 1)
 		return "";
 	return `?${s}`;
@@ -588,25 +544,25 @@ function appendLink(e, url, text, merge = {}, remove = []) {
 			for (k in merge) q.set(k, merge[k]);
 		}
 		const a = appendNewElement(e, "a");
-		a.href = url.replace(/%/g, "%25") + queryString(q);
+		a.href = encodeURI(url) + queryString(q);
 		a.innerText = text;
 	}
 	else
 		e.append(text);
 }
-function appendSymbolicLink(e, link, merge = {}, remove = []) {
+function appendSymbolicLink(e, link, final) {
 	const base = <?=JJ($base)?>;
 	if (link.url === false)
 		e = appendNewElement(e, "s", "dangling");
 	if (typeof link.url != "string")
 		e.append(link.dir);
-	else {
-		if (link.inTree) {
-			const a = appendNewElement(e, "a", "document-root");
-			a.href = <?=JJ($base)?>;
-		}
-		appendLink(e, `${base}${link.url}`, link.dir, merge, remove);
+	else if (final) {
+		const a = appendNewElement(e, "a", "document-root");
+		a.href = <?=JJ($base)?>;
+		appendLink(e, `${base}${link.url}`, link.url.replace(/\/+$/, ""));
 	}
+	else
+		appendLink(e, `${base}${link.url}`, link.dir);
 	e.append(link.name);
 }
 
@@ -631,7 +587,45 @@ function sortFunc(forDirectory) {
 	return (a, b) => a.name == b.name ? 0 : ( a.name < b.name ? -1 : 1 );
 }
 
+function appendLinkInfo(li, v) {
+	li.append(" -> ");
+	appendSymbolicLink(li, v.next, false);
+	li.append(" ");
+	if (v.final.url === false)
+		appendNewElement(li, "span", "dangling-indicator");
+	else {
+		const span = appendNewElement(li, "span", "final-target");
+		span.append("(");
+		appendSymbolicLink(span, v.final, true);
+		span.append(")");
+	}
+}
+
+function setFileEntryInfo(v, mtime, size, forDirectory) {
+	if ("mtime" in v)
+		mtime.innerText = formatDateTime(new Date(v.mtime * 1000));
+	if (forDirectory) {
+		if ("mtime" in v)
+			size.innerText = "DIR";
+		else {
+			size.classList.add("load-stat");
+			size.innerText = "SHOW STAT"
+		}
+	}
+	else {
+		if ("size" in v)
+			size.innerText = numfmt(v.size);
+		else {
+			size.classList.add("load-stat");
+			size.innerText = "show stat"
+		}
+	}
+}
+
 function list_entries(e, entries, url, forDirectory = false) {
+<?php if (getenv(ENV_NO_FILESTAT) !== false): ?>
+	const statbase = <?=JJ($scriptpath."get-filestat.php".$path)?>;
+<?php endif ?>
 	if (entries.length < 1)
 		return;
 	e.innerHTML = "";
@@ -640,45 +634,30 @@ function list_entries(e, entries, url, forDirectory = false) {
 	for (const v of entries) {
 		const name = v.name;
 		const li = createNewElement("li");
-		if (forDirectory)
-			e.append(li);
-		else
-			e.append(li);
+		e.append(li);
 		li.dataset.filename = name;
 		const mtime = appendNewElement(li, "span", "date");
-		mtime.innerText = formatDateTime(new Date(v.mtime * 1000));
 		li.append(" ");
 		const size = appendNewElement(li, "span", "filesize");
-		if (forDirectory) {
+		if (forDirectory)
 			size.classList.add("directory");
-			size.innerText = "DIR";
-		}
-		else
-			size.innerText = numfmt(v.size);
 		li.append(" ");
 		appendNewElement(li, "span",  "file-context-menu-popper").innerText = "...";
 		li.append(" ");
 		if (!forDirectory && name.match(/\.php$/))
 			li.append(name);
 		else if (forDirectory)
-			appendLink(li, `${url}${name}/`, name, null);
+			appendLink(li, `${url}${name}/`, name);
 		else if (v.isFile)
-			appendLink(li, `${url}${name}`, name, null);
+			appendLink(li, `${url}${name}`, name);
 		else
 			appendNewElement(li, "i", "special").innerText = name;
-		if (v.isLink) {
-			li.append(" -> ");
-			appendSymbolicLink(li, v.next);
-			li.append(" ");
-			if (v.final.url === false)
-				appendNewElement(li, "span", "dangling-indicator");
-			else {
-				const span = appendNewElement(li, "span", "final-target");
-				span.append("(");
-				appendSymbolicLink(span, v.final);
-				span.append(")");
-			}
-		}
+<?php if (getenv(ENV_NO_FILESTAT) !== false): ?>
+		li.dataset.staturl = `${statbase}${name}`;
+<?php endif ?>
+		setFileEntryInfo(v, mtime, size, forDirectory);
+		if (v.isLink)
+			appendLinkInfo(li, v);
 	}
 }
 
@@ -707,6 +686,12 @@ function listFilesystemItems() {
 	list_entries(QS(outer, "ul.files"), fsysItems.files, filepath);
 }
 $AEL("DOMContentLoaded", _ => {
+	let selectedSortButton = $QS(`.commander button[data-sort-by="${sortBy}"]`);
+	if (selectedSortButton == null) {
+		selectedSortButton = $QS(`.commander button[data-sort-by="n"]`);
+		sortBy = "n";
+		delete linkopt.sort;
+	}
 	listFilesystemItems();
 	let selected = $QS(".commander .selected");
 	let url = new URL($D.location);
@@ -1038,7 +1023,6 @@ $AEL("DOMContentLoaded", _ => {
 	}
 	AEL($QS(".commander"), "click", ev => handleCommander(ev));
 	AEL($QS(".commander"), "contextmenu", ev => handleCommander(ev, true));
-	const selectedSortButton = $QS(`.commander button[data-sort-by="${sortBy}"]`);
 	selectedSortButton.classList.add("selected");
 	if (descending)
 		selectedSortButton.classList.add("reversed");
@@ -1098,6 +1082,31 @@ $AEL("DOMContentLoaded", _ => {
 	$QS("#max-upload-size span").innerText = numfmt(
 		useSegmentedUpload ? segmentedUploadLimitBytes : maxUploadSize
 	);
+
+	// load file stat
+<?php if (getenv(ENV_NO_FILESTAT) !== false): ?>
+	$AEL("click", ev => {
+		const span = ev.target.closest(".load-stat");
+		if (span == null)
+			return;
+		const li = span.closest("li");
+		fetch(li.dataset.staturl).then(resp => {
+			if (!resp.ok) throw "failed to get filestat";
+			return resp.json();
+		})
+		.then(json => {
+			if (!json.success) throw "got error while getting filestat";
+			const v = json.ent;
+			console.log(v);
+			const mtime = QS(li, "span.date");
+			const size = QS(li, "span.filesize");
+			setFileEntryInfo(v, mtime, size, v.isDir);
+			if (v.isLink)
+				appendLinkInfo(li, v);
+			size.classList.remove("load-stat")
+		});
+	});
+<?php endif ?>
 });
 </script>
 <style type="text/css"><!--
@@ -1176,6 +1185,13 @@ p { margin: 0em; }
 	padding: 0px 0.1em;
 	font-size: 80%;
 	min-width: 6em;
+}
+.filesize.load-stat {
+	border-color: gray;
+	border-radius: 0;
+	color: gray;
+	text-align: center;
+	cursor: pointer;
 }
 .directory {
 	text-align: center;
@@ -1479,8 +1495,11 @@ div.dimmer {
 <div class="doing-list"></div>
 <div class="pending-list"></div>
 </div>
-<p class="commander"><button id="sort-by-time" data-sort-by="t">sort by time</button>
+<p class="commander">
+<?php if (getenv(ENV_NO_FILESTAT) === false): ?>
+<button id="sort-by-time" data-sort-by="t">sort by time</button>
 <button id="sort-by-size" data-sort-by="s">sort by size</button>
+<?php endif ?>
 <button id="sort-by-name" data-sort-by="n">sort by name</button>
 <button id="dot-files">dot files</button>
 <span id="go-top" class="button">top</span>
