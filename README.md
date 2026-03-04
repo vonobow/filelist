@@ -28,7 +28,7 @@ php -S localhost:12345
 * **NO AUTHENTICATION.**
 * **`localhost:12345` CAN BE ACCESSED BY ANYONE** who are on the server.
 * The size of uploading file is limited by the PHP settings.
-* if you can see `index.php` as `filelist/index.php` on the current directory, you can see  the file list by accessing `http://localhost:12345/filelist/index.php`.
+* If you can see `index.php` as `filelist/index.php` on the current directory, you can see  the file list by accessing `http://localhost:12345/filelist/index.php`.
 * Creating symbolic link makes it easy to use.
 
 ### Simple
@@ -84,10 +84,17 @@ php -S localhost:12345 path/to/router.php
 * The path after the direct target is the final target (`realpath`ed) target.
 * The hyperlinks point the container (the parent directory) of each target.
 
+### File statuses
+
+* By default, mtime and size of the files are displayed on the list.
+* If `FILELIST_NO_FILESTAT` environment variable is set, these are not displayed at first.
+* Click `show stat` to see these.
+* Sorting by mtime and size are not possible in this mode.
+
 ### Thumbnails
 
 * For a file named `filename`, if there is a file named `th/filename`, this file is used as the thumbnail.
-* if `FILELIST_NO_THUMBNAIL` environment variable is set, thumbnails are not shown, but `load thumbnail` button appears.
+* If `FILELIST_NO_THUMBNAIL` environment variable is set, thumbnails are not shown, but `load thumbnail` button appears.
 * Thumbnail files can be generated, for instance, by using ImageMagick like following.
 
 ```
@@ -98,4 +105,4 @@ magick filemame.jpg -auto-orient -resize "x100>" th/filename.jpg
 
 AGPLv3, see [COPYING](COPYING).
 
-Copyright 2025 akamoz.jp
+Copyright 2025-2026 akamoz.jp

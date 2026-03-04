@@ -1,5 +1,5 @@
 <?php
-// Copyright 2025 akamoz.jp
+// Copyright 2025-2026 akamoz.jp
 //
 // This file is part of tiny-filelist.
 //
@@ -16,10 +16,11 @@
 // You should have received a copy of the Affero GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-const VERSION = "0.6";
+const VERSION = "0.7";
 const PASSHASHFILE = ".tiny-filelist-passhash";
 const ENV_TEMPDIR = "FILELIST_TEMPDIR";
 const ENV_NO_THUMBNAIL = "FILELIST_NO_THUMBNAIL";
+const ENV_NO_FILESTAT = "FILELIST_NO_FILESTAT";
 
 // strip last component from specified path.
 //	returned string has no trailling slash.
