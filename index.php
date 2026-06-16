@@ -35,53 +35,23 @@ $hideDots = 1;
 $sortby = "n";
 $descending = 0;
 
-$linkopt = [];
-
-if (isset($_REQUEST["dots"])) {
-	$linkopt["dots"] = 1;
+if (isset($_REQUEST["dots"]))
 	$hideDots = 0;
-}
-if (in_array($_REQUEST["sort"] ?? null, [ "t", "s", "n" ])) {
+if (in_array($_REQUEST["sort"] ?? null, [ "t", "s", "n" ]))
 	$sortby = $_REQUEST["sort"];
-	$linkopt["sort"] = $sortby;
-}
-if (isset($_REQUEST["rev"])) {
+if (isset($_REQUEST["rev"]))
 	$descending = intval($_REQUEST["rev"]);
-	$linkopt["rev"] = 1;
-}
 
-function putLink($url, $text, $merge = [], $remove = []) {
-	global $linkopt;
-	$opt = [];
-	if ($merge !== null) {
-		$opt = $linkopt;
-		foreach ($remove as $v)
-			unset($opt[$v]);
-		$opt = array_merge($opt, $merge);
-	}
-	if (is_string($url)) {
-		echo '<a href="',
-			str_replace("%", "%25", htmlspecialchars($url));
-		if (count($opt) > 0)
-			echo "?", http_build_query($opt);
-		echo '">';
-	}
-	echo htmlspecialchars($text);
-	if (is_string($url))
-		echo "</a>";
-}
-
-function putBreadcrumb($url, $path) {
-	echo "[";
-	putLink($url, "root");
-	echo "]";
+function generateBreadcrumb($url, $path) {
+	$out = [];
+	$out[] = [ $url, "root" ];
 	foreach (explode("/", $path) as $v) {
 		if (strlen($v) < 1)
 			continue;
 		$url .= "{$v}/";
-		echo "/";
-		putLink($url, $v);
+		$out[] = [ $url, $v ];
 	}
+	return $out;
 }
 
 function enumFilesystemItems($path) {
@@ -300,22 +270,23 @@ function getDropTarget(e) {
 
 const fetchTimeoutSec = 30;
 let aborter = new AbortController();
-function fetchWithTimeout(url, opt = {}, timeoutSec = null, signals = null) {
-	signals ??= [ aborter.signal ];
+function fetchWithTimeout(url, opt = {}, timeoutSec = null, abortable = true) {
+	const signals = [];
+	if (abortable)
+		signals.push(aborter.signal);
 	timeoutSec ??= fetchTimeoutSec;
 	signals.push(AbortSignal.timeout(timeoutSec * 1000));
 	return fetch(url, { ...opt, signal: AbortSignal.any(signals) });
 }
 
-function fetchWithRetry(url, opt = {}, timeoutSec = null, signals = null, retry = 3) {
+function fetchWithRetry(url, opt = {}, timeoutSec = null, abortable = true, retry = 3) {
 	timeoutSec ??= fetchTimeoutSec;
-	return fetchWithTimeout(url, opt, timeoutSec, signals)
+	return fetchWithTimeout(url, opt, timeoutSec, abortable)
 	.catch(v => {
-		if (v.name == "TimeoutError" && retry > 0) {
-			console.log("request timed out, retry");
-			return fetchWithRetry(url, opt, timeoutSec * 2, signals, retry - 1);
-		}
-		throw v;
+		if ((abortable && aborter.signal.aborted) || retry < 1)
+			throw v;
+		console.log("request failed, or timed out, retry");
+		return fetchWithRetry(url, opt, timeoutSec * 2, abortable, retry - 1);
 	});
 }
 
@@ -436,7 +407,7 @@ function uploadSegment(q, file, elem, id, usid) {
 			idlist.forEach(v => q.remove(v));
 			q.queue(`${id}-cancel`, _ => {
 				const param = new URLSearchParams({ id: usid, nologin: true });
-				return fetchWithRetry(`${scriptpath}upload-cancel.php?${param}`, {}, 5, []);
+				return fetchWithRetry(`${scriptpath}upload-cancel.php?${param}`, {}, 5, false);
 			}, 10);
 			postFailed(elem, id, message);
 		})
@@ -534,12 +505,25 @@ function queryString(param) { // URLSearchParams
 		return "";
 	return `?${s}`;
 }
-let linkopt = <?=JJ($linkopt)?>;
+function updateSearchParams(params) {
+	if (sortBy == "n")
+		params.delete("sort");
+	else
+		params.set("sort", sortBy);
+	if (descending)
+		params.set("rev", 1);
+	else
+		params.delete("rev");
+	if (hideDots)
+		params.delete("dots");
+	else
+		params.set("dots", 1);
+}
 function appendLink(e, url, text, merge = {}, remove = []) {
 	if (typeof url == "string") {
 		const q = new URLSearchParams();
 		if (merge !== null) {
-			for (k in linkopt) q.set(k, linkopt[k]);
+			updateSearchParams(q);
 			for (v of remove) q.delete(v);
 			for (k in merge) q.set(k, merge[k]);
 		}
@@ -649,7 +633,7 @@ function list_entries(e, entries, url, forDirectory = false) {
 		else if (forDirectory)
 			appendLink(li, `${url}${name}/`, name);
 		else if (v.isFile)
-			appendLink(li, `${url}${name}`, name);
+			appendLink(li, `${url}${name}`, name, {}, [ "sort", "rev", "dots" ]);
 		else
 			appendNewElement(li, "i", "special").innerText = name;
 <?php if (getenv(ENV_NO_FILESTAT) !== false): ?>
@@ -685,12 +669,29 @@ function listFilesystemItems() {
 	list_entries(QS(outer, "ul.directories"), fsysItems.dirs, url, true);
 	list_entries(QS(outer, "ul.files"), fsysItems.files, filepath);
 }
+function breadcrumb(e) {
+	const pathlist = <?=JJ(generateBreadcrumb($base."/", $path))?>;
+	e.append("[");
+	appendLink(e, ...pathlist[0]);
+	e.append("]");
+	pathlist.shift();
+	pathlist.forEach(v => {
+		e.append("/");
+		appendLink(e, ...v);
+	});
+}
+function updateBreadcrumb(e) {
+	e.querySelectorAll("a").forEach(a => {
+		const params = new URLSearchParams(a.search);
+		updateSearchParams(params);
+		a.search = queryString(params);
+	});
+}
 $AEL("DOMContentLoaded", _ => {
 	let selectedSortButton = $QS(`.commander button[data-sort-by="${sortBy}"]`);
 	if (selectedSortButton == null) {
 		selectedSortButton = $QS(`.commander button[data-sort-by="n"]`);
 		sortBy = "n";
-		delete linkopt.sort;
 	}
 	listFilesystemItems();
 	let selected = $QS(".commander .selected");
@@ -977,6 +978,8 @@ $AEL("DOMContentLoaded", _ => {
 		aborter.abort("aborted by user");
 	});
 
+	breadcrumb($ID("breadcrumb"));
+
 	// commanders
 	function handleSortButtons(ev, e, force) {
 		// sort buttons
@@ -994,13 +997,10 @@ $AEL("DOMContentLoaded", _ => {
 		e.classList[descending?"add":"remove"]("reversed");
 		const url = new URL(location);
 		const params = url.searchParams;
-		params.set("sort", sortBy);
-		if (descending)
-			params.set("rev", 1);
-		else
-			params.delete("rev");
+		updateSearchParams(params);
 		history.replaceState(null, "", url);
 		listFilesystemItems();
+		updateBreadcrumb($ID("breadcrumb"));
 	}
 	function handleDotFiles(e, force) {
 		const url = new URL(location);
@@ -1487,7 +1487,7 @@ div.dimmer {
 <body>
 <div class="body">
 <header>
-<h1><?php putBreadcrumb($base."/", $path) ?></h1>
+<h1 id="breadcrumb"></h1>
 <p class="info no-dimmed"><button id="abort-button">ABORT</button> <span class="status"></span>
 <div class="result no-dimmed">
 <div class="failed-list"></div>
