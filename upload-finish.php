@@ -18,20 +18,41 @@
 
 require_once __DIR__."/segmented-upload-util.inc";
 
-$hash = $_REQUEST["hash"] ?? exitWithResponse(400, "no hash");
-$hash = str_replace(["-", "_"], ["+", "/"], $hash);
-$hash = base64_decode($hash) ?: exitWithResponse(400, "incorrect hash");
+$hashes = file_get_contents("php://input");
+if ($hashes === false)
+	exitWithResponse(400, "cannot get body");
+$hashes = json_decode($hashes);
+if ($hashes === null)
+	exitWithResponse(400, "incorrect body format");
+if (!is_array($hashes))
+	exitWithResponse(400, "incorrect body format");
+foreach ($hashes as &$hash) {
+	if (!is_string($hash))
+		exitWithResponse("incorrect hash format");
+	$hash = str_replace(["-", "_"], ["+", "/"], $hash);
+	$hash = base64_decode($hash) ?: exitWithResponse(400, "incorrect hash");
+}
+unset($hash);
 
 deleteUploadSession($id);
 session_write_close();
 
 error_log("calculating hash");
-$tmphash = hash_file("sha256", $tmpname, true) ?: exitWithResponse(
-	500, "failed to calculate hash"
-);
+const HASHSTEP = 256 * 1024 ** 2;
+const HASHLEN = HASHSTEP + 1024 ** 2;
+$fd = fopen($tmpname, "rb") ?: exitWithResponse(500, "failed to open uploaded file");
+$i = 0;
+foreach ($hashes as $hash) {
+	$h = hash_init("sha256");
+	if (fseek($fd, $i) < 0)
+		exitWithResponse(500, "upload uncompleted?");
+	hash_update_stream($h, $fd, HASHLEN);
+	if (hash_final($h) != bin2hex($hash))
+		exitWithResponse(500, "hashes are not matched");
+	$i += HASHSTEP;
+}
+fclose($fd);
 error_log("done");
-if ($tmphash != $hash)
-	exitWithResponse(500, "hashes are not matched");
 
 if (@rename($tmpname, $dstname) == false)
 	exitWithResponse(500, "failed to create target file");

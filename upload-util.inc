@@ -20,7 +20,8 @@ require_once __DIR__."/set-pathinfo.php";
 
 const K_UPLOAD_SESSION = "uploadSession";
 
-$max_upload_position ??= 1024 * 1024 * 1024;
+// moved to set-config.inc, can be overridden by config.inc
+// $max_upload_position ??= 1024 * 1024 * 1024;
 
 $unlinkOnError = [];
 function exitWithResponse($resp, $text) {

@@ -16,7 +16,9 @@
 // You should have received a copy of the Affero GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-const VERSION = "0.8";
+require_once __DIR__."/set-config.inc";
+
+const VERSION = "0.9";
 const VARIANT = "md";
 const PASSHASHFILE = ".tiny-filelist-passhash";
 const ENV_TEMPDIR = "FILELIST_TEMPDIR";

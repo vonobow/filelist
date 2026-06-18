@@ -4,7 +4,7 @@ CAUTION: This is mainly intended to use in closed environment, such as container
 
 CAUTION: Markdown rendering tries to include some files without any checks. **DO NOT USE WITH UNTRUSTED FILES.**
 
-* Simple file upload/download utility written in PHP.
+* A simple file upload/download utility written in PHP.
 * It can list, upload, and download files.
 * It CANNOT remove any files for safety.
 * Creating directories can be done by uploading files with containing directories.
@@ -123,6 +123,18 @@ magick filemame.jpg -auto-orient -resize "x100>" th/filename.jpg
 	* CSS
 	* JavaScript codes
 	* `<meta>` elements
+
+## Configuration
+
+* Default configuration are set in `set-config.inc`.
+* You can set your configuration in `config.inc`, which is included by `set-config.inc`, but is not present in the repository.
+* These are normal PHP sources.
+
+### Available Options
+
+* **$max_upload_position**
+	* Specify maximum write position in the destination file for writing an uploaded segment, in bytes.
+	* This is roughly the maximum size for the segmented upload.
 
 ## OSSs Used
 
