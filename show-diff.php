@@ -22,7 +22,7 @@ require __DIR__."/html-header.inc";
 ?>
 <title><?= htmlspecialchars($targetfile) ?></title>
 <?php
-require_once(__DIR__."/go-up.pjs");
+require_once __DIR__."/go-up.pjs";
 ?>
 <script id="diff" type="application/json">
 <?=JJ(file_get_contents($targetfile)),PHP_EOL?>

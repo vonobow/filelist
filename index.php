@@ -268,6 +268,27 @@ function getDropTarget(e) {
 	return null;
 }
 
+// AbortSignal.any polyfill
+function sigany(signals) {
+	const aborted = signals.find(s => s.aborted);
+	if (aborted)
+		return AbortSignal.abort(aborted.reason);
+	const abcon = new AbortController();
+	function handleAbort(s) {
+		abcon.abort(s.reason);
+		rm.forEach(f => f());
+	}
+	const rm = signals.map(s => AEL(s, "abort", _ => handleAbort(s)));
+	return abcon.signal;
+}
+
+// AbortSignal.timeout polyfill
+function sigtimeout(msec) {
+	const abcon = new AbortController();
+	setTimeout(_ => abcon.abort("Timeout"), msec);
+	return abcon.signal;
+}
+
 const fetchTimeoutSec = 30;
 let aborter = new AbortController();
 function fetchWithTimeout(url, opt = {}, timeoutSec = null, abortable = true) {
@@ -275,8 +296,8 @@ function fetchWithTimeout(url, opt = {}, timeoutSec = null, abortable = true) {
 	if (abortable)
 		signals.push(aborter.signal);
 	timeoutSec ??= fetchTimeoutSec;
-	signals.push(AbortSignal.timeout(timeoutSec * 1000));
-	return fetch(url, { ...opt, signal: AbortSignal.any(signals) });
+	signals.push(sigtimeout(timeoutSec * 1000));
+	return fetch(url, { ...opt, signal: sigany(signals) });
 }
 
 function fetchWithRetry(url, opt = {}, timeoutSec = null, abortable = true, retry = 3) {
@@ -351,13 +372,28 @@ function initiateSegmentedUpload(q, file, path, elem, id) {
 	.catch(message => postFailed(elem, id, message));
 }
 
+async function calcOverlappedHash(file, signal) {
+	const step = 256 * 1024 ** 2;
+	const len = step + 1024 ** 2;
+	const result = [];
+	for (let i = 0; i < file.size; i += step) {
+		if (signal?.aborted)
+			throw signal.reason;
+		result.push(
+			await file.slice(i, Math.min(i + len, file.size))
+			.arrayBuffer()
+			.then(buf => crypto.subtle.digest("SHA-256", buf))
+		);
+	}
+	return result;
+}
+
 function uploadSegment(q, file, elem, id, usid) {
 	const size = file.size;
 	const numSegments = Math.ceil(file.size / segmentedUploadLimitBytes);
 	const segmentSize = Math.ceil(size / numSegments);
-	const promises = [
-		file.arrayBuffer().then(buf => crypto.subtle.digest("SHA-256", buf))
-	];
+	const hashAborter = new AbortController();
+	const promises = [ calcOverlappedHash(file, hashAborter.signal) ];
 	const idlist = [];
 	postEvent(elem, "filelist-init", { id, total: size });
 	const remover = $AEL("beforeunload", _ => {
@@ -393,26 +429,28 @@ function uploadSegment(q, file, elem, id, usid) {
 	}
 	const finid = `${id}-finish`;
 	idlist.push(finid);
-	q.queue(finid, _ => {
-		return Promise.all(promises)
-		.then(v => {
-			postEvent(elem, "filelist-finalize", { id });
-			const hash = toBase64(new Uint8Array(v[0]));
-			const param = new URLSearchParams({ id: usid, hash, nologin: true });
-			return fetchWithRetry(`${scriptpath}upload-finish.php?${param}`, {}, 60);
-		})
-		.then(resp => resp.text().then(msg => resp.ok ? msg : Promise.reject(msg)))
-		.then(message => postSuccess(elem, id, message))
-		.catch(message => {
-			idlist.forEach(v => q.remove(v));
-			q.queue(`${id}-cancel`, _ => {
-				const param = new URLSearchParams({ id: usid, nologin: true });
-				return fetchWithRetry(`${scriptpath}upload-cancel.php?${param}`, {}, 5, false);
-			}, 10);
-			postFailed(elem, id, message);
-		})
-		.finally(remover);
-	}, 10);
+	Promise.all(promises)
+	.then(v => {
+		postEvent(elem, "filelist-finalize", { id });
+		const param = new URLSearchParams({ id: usid, nologin: true });
+		return fetchWithRetry(`${scriptpath}upload-finish.php?${param}`, {
+			method: "post",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(v[0].map(u => toBase64(new Uint8Array(u))))
+		}, 60);
+	})
+	.then(resp => resp.text().then(msg => resp.ok ? msg : Promise.reject(msg)))
+	.then(message => postSuccess(elem, id, message))
+	.catch(message => {
+		idlist.forEach(v => q.remove(v));
+		q.queue(`${id}-cancel`, _ => {
+			const param = new URLSearchParams({ id: usid, nologin: true });
+			return fetchWithRetry(`${scriptpath}upload-cancel.php?${param}`, {}, 5, false);
+		}, 10);
+		postFailed(elem, id, message);
+		hashAborter.abort(message);
+	})
+	.finally(remover);
 }
 
 function makeDirectory(path, elem, id) {
@@ -1030,9 +1068,15 @@ $AEL("DOMContentLoaded", _ => {
 	})
 
 	// max upload size
-	$QS("#max-upload-size span").innerText = numfmt(
-		useSegmentedUpload ? segmentedUploadLimitBytes : maxUploadSize
-	);
+	{
+		const e = $ID("max-upload-size");
+		if (useSegmentedUpload) {
+			QS(e, ".segsize").innerText = numfmt(segmentedUploadLimitBytes);
+			QS(e, ".maxsize").innerText = numfmt(<?=JJ($max_upload_position)?>);
+		}
+		else
+			QS(e, ".maxsize").innerText = numfmt(maxUploadSize);
+	}
 
 	// load file stat
 <?php if (getenv(ENV_NO_FILESTAT) !== false): ?>
@@ -1400,9 +1444,10 @@ div.dimmer {
 <button id="logout">logout</button>
 <p id="max-upload-size"><?php
 if (getenv(ENV_TEMPDIR) == false)
-	echo ENV_TEMPDIR, " is not set, max upload size is <span></span> bytes";
+	echo ENV_TEMPDIR, " is not set, ";
 else
-	echo "segmented upload is enabled, segment size is <span></span> bytes";
+	echo "segmented upload is enabled, segment size is <span class='segsize'></span> bytes, ";
+echo "max upload size is <span class='maxsize'></span> bytes";
 ?>
 </div><!-- .content-body -->
 </div><!-- .body -->

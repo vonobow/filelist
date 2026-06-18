@@ -25,7 +25,7 @@ const PARAMHOLDTIME = 60;
 const REGENERATEDURATION = 600;
 const MAXSESSIONDURATION = 43200;
 
-// $_SESSIONのキー
+// keys for $_SESSION
 const KEY_SESSIONVER = "sessionvresion";
 const KEY_AUTHAT = "authorized_at";
 const KEY_REGENAT = "regenerated_at";
@@ -33,7 +33,7 @@ const KEY_EXTENDEDAT = "extended_at";
 const KEY_EXPIREDAT = "expired_at";
 const KEY_REQPARAM = "requestparam";
 
-// クッキーのキー
+// keys for the cookies
 const COOKIE_OLDSESSION = "PHPOLDSESSION";
 
 function L($msg, $dig = 0) {

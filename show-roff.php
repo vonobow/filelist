@@ -22,7 +22,7 @@ require __DIR__."/html-header.inc";
 ?>
 <title><?= htmlspecialchars($targetfile) ?></title>
 <?php
-require_once(__DIR__."/go-up.pjs");
+require_once __DIR__."/go-up.pjs";
 chdir(__DIR__);
 echo file_get_contents("default.fhtml");
 echo file_get_contents("man-default.fhtml");
