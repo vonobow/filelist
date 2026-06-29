@@ -18,7 +18,7 @@
 
 require_once __DIR__."/set-config.inc";
 
-const VERSION = "0.9";
+const VERSION = "0.10";
 const VARIANT = "md";
 const PASSHASHFILE = ".tiny-filelist-passhash";
 const ENV_TEMPDIR = "FILELIST_TEMPDIR";

@@ -373,19 +373,30 @@ function initiateSegmentedUpload(q, file, path, elem, id) {
 }
 
 async function calcOverlappedHash(file, signal) {
-	const step = 256 * 1024 ** 2;
+	const step = 16 * 1024 ** 2;
 	const len = step + 1024 ** 2;
 	const result = [];
-	for (let i = 0; i < file.size; i += step) {
+	for (let pos = 0; pos < file.size; pos += step) {
 		if (signal?.aborted)
 			throw signal.reason;
-		result.push(
-			await file.slice(i, Math.min(i + len, file.size))
-			.arrayBuffer()
-			.then(buf => crypto.subtle.digest("SHA-256", buf))
-		);
+		const e = Math.min(pos + len, file.size);
+		result.push({
+			pos, size: e - pos,
+			hash: await file.slice(pos, e).arrayBuffer().then(
+				buf => crypto.subtle.digest("SHA-256", buf)
+			)
+		});
 	}
 	return result;
+}
+
+function fetchAndCheck(...args) {
+	return fetchWithRetry(...args)
+		.then(resp => resp.text().then(t => {
+			if (!resp.ok)
+				throw t;
+			return t;
+		}));
 }
 
 function uploadSegment(q, file, elem, id, usid) {
@@ -410,16 +421,14 @@ function uploadSegment(q, file, elem, id, usid) {
 		const param = new URLSearchParams({ id: usid, pos: from, nologin: true });
 		const body = file.slice(from, to)
 		q.queue(segid, _ => {
-			return fetchWithRetry(`${scriptpath}upload-segment.php?${param}`, {
+			return fetchAndCheck(`${scriptpath}upload-segment.php?${param}`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/octet-stream"
 				},
 				body
 			})
-			.then(resp => {
-				if (!resp.ok)
-					return resp.text().then(msg => Promise.reject(msg));
+			.then(_ => {
 				postEvent(elem, "filelist-progress", { id, size: body.size });
 				p.resolve();
 			})
@@ -429,19 +438,33 @@ function uploadSegment(q, file, elem, id, usid) {
 	}
 	const finid = `${id}-finish`;
 	idlist.push(finid);
-	Promise.all(promises)
-	.then(v => {
-		postEvent(elem, "filelist-finalize", { id });
-		const param = new URLSearchParams({ id: usid, nologin: true });
-		return fetchWithRetry(`${scriptpath}upload-finish.php?${param}`, {
-			method: "post",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(v[0].map(u => toBase64(new Uint8Array(u))))
-		}, 60);
-	})
-	.then(resp => resp.text().then(msg => resp.ok ? msg : Promise.reject(msg)))
-	.then(message => postSuccess(elem, id, message))
-	.catch(message => {
+	const pfin = newPromise();
+	q.queue(finid, _ => Promise.all(promises).then(v => {
+		const commonparam = { id: usid, nologin: true };
+		let p = Promise.resolve();
+		const ftotal = v[0].length;
+		v[0].forEach((u, i) => {
+			p = p.then(_ => {
+				postEvent(elem, "filelist-finalize", { id, ftotal });
+				const param = new URLSearchParams({
+					...commonparam, p: u.pos, s: u.size,
+					h: toBase64(new Uint8Array(u.hash))
+				});
+				return fetchAndCheck(`${scriptpath}upload-checksum.php?${param}`);
+			});
+		});
+		return p.then(_ => {
+				const param = new URLSearchParams(commonparam);
+				return fetchAndCheck(`${scriptpath}upload-finish.php?${param}`);
+			})
+			.then(msg => {
+				postSuccess(elem, id, msg)
+				pfin.resolve();
+			})
+			.catch(rzn => pfin.reject(rzn));
+	}), 10);
+	Promise.all(promises).catch(rzn => pfin.reject(rzn));
+	pfin.promise.catch(message => {
 		idlist.forEach(v => q.remove(v));
 		q.queue(`${id}-cancel`, _ => {
 			const param = new URLSearchParams({ id: usid, nologin: true });
@@ -685,6 +708,7 @@ function list_entries(e, entries, url, forDirectory = false) {
 
 const fsysItems = <?=JJ(enumFilesystemItems($path))?>;
 const filepath = <?=JJ(prependPathPrefix($path))?>;
+const thumbnail_size = <?=JJ($thumbnail_size)?>;
 function loadThumbnails() {
 	const thumb = $ID("thumbnail");
 	thumb.innerHTML = "";
@@ -692,7 +716,7 @@ function loadThumbnails() {
 		const a = appendNewElement(thumb, "a");
 		a.href = `${filepath}${v.name}`;
 		const img = appendNewElement(a, "img");
-		img.height = 100;
+		img.height = thumbnail_size;
 		img.src = `${filepath}th/${v.name}`;
 		thumb.append(" ");
 	});
@@ -847,26 +871,30 @@ $AEL("DOMContentLoaded", _ => {
 	$AEL("filelist-doing", ev => {
 		moveToDoing(QS(result, `#${ev.detail.id}`));
 	});
+	const symState = Symbol("tinyFileList");
 	$AEL("filelist-init", ev => {
 		const e = QS(result, `#${ev.detail.id}`);
 		moveToDoing(e);
 		const span = $D.createElement("span");
 		e.append(" ", span);
 		const total = ev.detail.total;
-		span.tinyFileList = { total, done: 0 };
-		span.innerText = `(0/${numfmt(total)} bytes)`
+		span[symState] = { total, done: 0, fcount: 0 };
+		span.innerText = `(0/${numfmt(total)} bytes)`;
 	});
 	$AEL("filelist-progress", ev => {
 		const span = QS(result, `#${ev.detail.id} span`);
-		const t = span.tinyFileList;
+		const t = span[symState];
 		t.done += ev.detail.size;
-		span.innerText = `(${numfmt(t.done)}/${numfmt(t.total)} bytes)`
+		span.innerText = `(${numfmt(t.done)}/${numfmt(t.total)} bytes)`;
 	});
 	$AEL("filelist-finalize", ev => {
 		const span = QS(result, `#${ev.detail.id} span`);
-		const t = span.tinyFileList;
-		t.done += ev.detail.size;
-		span.innerText = `(${numfmt(t.total)} bytes, finalizing)`
+		const t = span[symState];
+		t.fcount++;
+		span.innerText = [
+			`(${numfmt(t.total)} bytes,`,
+			`finalizing ${numfmt(t.fcount)}/${numfmt(ev.detail.ftotal)})`
+		].join(" ");
 	});
 	$AEL("filelist-success", ev => {
 		let e = QS(result, `#${ev.detail.id}`);

@@ -98,3 +98,21 @@ function getFileStat($name, $base = null) {
 	}
 	return $ent;
 }
+
+function validate_int($s, $msg = "incorrect integer") {
+	if (is_int($s))
+		return $s;
+	if (!is_string($s))
+		exitWithResponse(400, $msg);
+	$s = filter_var($s, FILTER_VALIDATE_INT);
+	if ($s === false)
+		exitWithResponse(400, $msg);
+	return $s;
+}
+
+function validate_int_param($k, $msg = null) {
+	$msg ??= "parameter {$k}";
+	$v = $_REQUEST[$k] ?? exitWithResponse(400, "no {$msg}");
+	$v = validate_int($v, "incorrect {$msg}");
+	return $v;
+}
