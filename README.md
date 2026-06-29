@@ -43,7 +43,7 @@ php -S localhost:12345
 * **`localhost:12345` CAN BE ACCESSED BY ANYONE** who are on the server.
 * Using simultaneous, segmented upload.
 * Can upload large files with PHP default settings.
-* Maximum file size is limited by `$max_upload_position` in `upload-util.inc` for the security reason.
+* Maximum file size is limited by `$max_upload_position` for the security reason. See configuration section.
 
 ### With tiny authentication
 
@@ -112,6 +112,8 @@ magick filemame.jpg -auto-orient -resize "x100>" th/filename.jpg
 * **$max_upload_position**
 	* Specify maximum write position in the destination file for writing an uploaded segment, in bytes.
 	* This is roughly the maximum size for the segmented upload.
+* **$thumbnail_size**
+	* Specify the thumbnail height, in CSS pixels. Default is 100.
 
 ## LICENSE
 
