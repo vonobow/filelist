@@ -710,7 +710,7 @@ const fsysItems = <?=JJ(enumFilesystemItems($path))?>;
 const filepath = <?=JJ(prependPathPrefix($path))?>;
 const thumbnail_size = <?=JJ($thumbnail_size)?>;
 function loadThumbnails() {
-	const thumb = $ID("thumbnail");
+	const thumb = $QS("#thumbnail .dimmer-container .inner");
 	thumb.innerHTML = "";
 	fsysItems.files.filter(v => v.thumbnail).forEach(v => {
 		const a = appendNewElement(thumb, "a");
@@ -1063,7 +1063,8 @@ $AEL("DOMContentLoaded", _ => {
 	$ID("timezone").innerText = `TZ=${tzname} (${tzval})`;
 
 	for (let e of [
-		$QS("header"), $QS(".item-lists"), $QS(".thumbnail"), $QS(".foot-commander")
+		$QS("header"), $QS(".item-lists"), $QS(".thumbnail"), $QS(".foot-commander"),
+		$QS(".body-separator")
 	]) {
 		const elems = Array.from(e.childNodes);
 		e.insertAdjacentHTML("afterbegin", "<div class='dimmer-container'></div>");
@@ -1160,6 +1161,12 @@ h1, .info, .commander, #max-upload-size,
 }
 .foot-commander .dimmer-container {
 	padding: 0px 4px 4px 4px;
+}
+.body-separator .dimmer-container {
+	padding: 0.5em 0;
+}
+hr {
+	margin: 0; padding: 0;
 }
 .content-body {
 	overflow-y: auto;
@@ -1465,9 +1472,10 @@ div.dimmer {
 </ul><ul class="files droptarget-current">
 <li class="upload-target">drop files here to upload
 </ul></div>
-<p id="thumbnail" class="thumbnail">
+<div id="thumbnail" class="thumbnail"><div class="inner">
 <button id="load-thumbnail">load thumbnail</button>
-<hr>
+</div></div>
+<div class="body-separator"><hr></div>
 <p class="foot-commander"><button id="select-files">select files to upload</button>
 <button id="logout">logout</button>
 <p id="max-upload-size"><?php
